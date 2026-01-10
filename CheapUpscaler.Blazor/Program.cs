@@ -38,6 +38,7 @@ class Program
         builder.Services.AddSingleton<DependencyChecker>();
         builder.Services.AddSingleton<ISettingsService, SettingsService>();
         builder.Services.AddSingleton<IUpscaleProcessorService, UpscaleProcessorService>();
+        builder.Services.AddSingleton<IVideoInfoService, VideoInfoService>();
 
         // Configure database (SQLite in AppData)
         var appDataPath = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);

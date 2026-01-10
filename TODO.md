@@ -62,7 +62,7 @@ AI video upscaling and frame interpolation. Takes rendered video output (from Ch
 - [x] DependencyManager.razor page
 - [x] DependencyListItem.razor component
 
-### Upscaling Queue Management - IN PROGRESS
+### Upscaling Queue Management - COMPLETE
 - [x] Create `UpscaleJob` model
 - [x] Create `UpscaleJobStatus` enum
 - [x] Create `UpscaleType` enum
@@ -99,9 +99,11 @@ AI video upscaling and frame interpolation. Takes rendered video output (from Ch
 - [x] Integration with Home page (New Job button)
 - [x] Integration with Queue page (Add Job button)
 
-### Video Source Selection - TODO
-- [ ] Display source video info (resolution, duration, frame rate, codec)
-- [ ] Preview thumbnail generation
+### Video Source Selection - COMPLETE
+- [x] Display source video info (resolution, duration, frame rate, codec)
+- [x] VideoInfoService using FFMpegCore/FFProbe
+- [x] VideoInfo model with formatted display properties
+- [ ] Preview thumbnail generation (optional future enhancement)
 
 ### RIFE Interpolation Settings UI - TODO
 - [ ] Interpolation multiplier slider (2x, 4x, 8x)

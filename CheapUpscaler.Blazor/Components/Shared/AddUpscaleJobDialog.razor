@@ -1,8 +1,10 @@
 @using CheapAvaloniaBlazor.Models
 @using CheapAvaloniaBlazor.Services
 @using CheapUpscaler.Blazor.Models
+@using CheapUpscaler.Blazor.Services
 @inject IDesktopInteropService DesktopInterop
 @inject ISnackbar Snackbar
+@inject IVideoInfoService VideoInfoService
 
 <MudDialog>
     <TitleContent>
@@ -31,11 +33,54 @@
                         Browse
                     </MudButton>
                 </MudStack>
-                @if (!string.IsNullOrEmpty(_sourcePath))
+                @if (_isLoadingVideoInfo)
                 {
-                    <MudText Typo="Typo.caption" Color="Color.Secondary">
-                        @Path.GetFileName(_sourcePath)
-                    </MudText>
+                    <MudProgressLinear Indeterminate="true" Color="Color.Primary" Class="mt-2" />
+                }
+                else if (_videoInfo != null)
+                {
+                    <MudPaper Elevation="0" Class="pa-3 mt-2" Style="background-color: var(--mud-palette-background-gray);">
+                        <MudStack Spacing="2">
+                            <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                                <MudText Typo="Typo.subtitle2" Color="Color.Primary">
+                                    @_videoInfo.FileName
+                                </MudText>
+                                <MudChip T="string" Size="Size.Small" Color="Color.Info">@_videoInfo.ResolutionLabel</MudChip>
+                            </MudStack>
+                            <MudStack Row="true" Spacing="4" Wrap="Wrap.Wrap">
+                                <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center">
+                                    <MudIcon Icon="@Icons.Material.Filled.AspectRatio" Size="Size.Small" Color="Color.Secondary" />
+                                    <MudText Typo="Typo.body2">@_videoInfo.Resolution</MudText>
+                                </MudStack>
+                                <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center">
+                                    <MudIcon Icon="@Icons.Material.Filled.Timer" Size="Size.Small" Color="Color.Secondary" />
+                                    <MudText Typo="Typo.body2">@_videoInfo.DurationFormatted</MudText>
+                                </MudStack>
+                                <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center">
+                                    <MudIcon Icon="@Icons.Material.Filled.Speed" Size="Size.Small" Color="Color.Secondary" />
+                                    <MudText Typo="Typo.body2">@_videoInfo.FrameRateFormatted</MudText>
+                                </MudStack>
+                                <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center">
+                                    <MudIcon Icon="@Icons.Material.Filled.Storage" Size="Size.Small" Color="Color.Secondary" />
+                                    <MudText Typo="Typo.body2">@_videoInfo.FileSizeFormatted</MudText>
+                                </MudStack>
+                            </MudStack>
+                            <MudStack Row="true" Spacing="2">
+                                <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined">@_videoInfo.VideoCodec.ToUpperInvariant()</MudChip>
+                                @if (_videoInfo.HasAudio)
+                                {
+                                    <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined">@_videoInfo.AudioCodec!.ToUpperInvariant()</MudChip>
+                                }
+                                <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined">@_videoInfo.TotalFrames.ToString("N0") frames</MudChip>
+                            </MudStack>
+                        </MudStack>
+                    </MudPaper>
+                }
+                else if (!string.IsNullOrEmpty(_sourcePath))
+                {
+                    <MudAlert Severity="Severity.Warning" Dense="true" Class="mt-2">
+                        Could not read video information. The file may be corrupted or in an unsupported format.
+                    </MudAlert>
                 }
             </MudStack>
 
@@ -131,6 +176,8 @@
     private string _sourcePath = string.Empty;
     private string _outputPath = string.Empty;
     private UpscaleType _selectedType = UpscaleType.Rife;
+    private VideoInfo? _videoInfo;
+    private bool _isLoadingVideoInfo;
 
     // Settings for each type
     private RifeJobSettings _rifeSettings = new();
@@ -140,7 +187,8 @@
 
     private bool IsValid => !string.IsNullOrWhiteSpace(_sourcePath) &&
                             !string.IsNullOrWhiteSpace(_outputPath) &&
-                            File.Exists(_sourcePath);
+                            File.Exists(_sourcePath) &&
+                            _videoInfo != null;
 
     private async Task BrowseSourceFile()
     {
@@ -158,6 +206,19 @@
         if (!string.IsNullOrEmpty(result))
         {
             _sourcePath = result;
+            _videoInfo = null;
+            _isLoadingVideoInfo = true;
+            StateHasChanged();
+
+            try
+            {
+                _videoInfo = await VideoInfoService.GetVideoInfoAsync(result);
+            }
+            finally
+            {
+                _isLoadingVideoInfo = false;
+            }
+
             GenerateOutputPath();
         }
     }
@@ -218,7 +279,13 @@
             SourceVideoPath = _sourcePath,
             OutputPath = _outputPath,
             UpscaleType = _selectedType,
-            SettingsJson = GetSettingsJson()
+            SettingsJson = GetSettingsJson(),
+            // Populate source video info
+            SourceWidth = _videoInfo?.Width,
+            SourceHeight = _videoInfo?.Height,
+            SourceFps = _videoInfo?.FrameRate,
+            SourceDuration = _videoInfo?.Duration,
+            TotalFrames = _videoInfo?.TotalFrames
         };
 
         MudDialog.Close(DialogResult.Ok(job));
