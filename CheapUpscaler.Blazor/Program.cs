@@ -1,27 +1,36 @@
-using CheapUpscaler.Blazor.Components;
+using CheapAvaloniaBlazor.Extensions;
+using CheapUpscaler.Core;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using MudBlazor;
 
-var builder = WebApplication.CreateBuilder(args);
+namespace CheapUpscaler.Blazor;
 
-// Add services to the container.
-builder.Services.AddRazorComponents()
-    .AddInteractiveServerComponents();
-
-var app = builder.Build();
-
-// Configure the HTTP request pipeline.
-if (!app.Environment.IsDevelopment())
+class Program
 {
-    app.UseExceptionHandler("/Error", createScopeForErrors: true);
-    // The default HSTS value is 30 days. You may want to change this for production scenarios, see https://aka.ms/aspnetcore-hsts.
-    app.UseHsts();
+    [STAThread]
+    public static void Main(string[] args)
+    {
+        var builder = new CheapAvaloniaBlazor.Hosting.HostBuilder()
+            .WithTitle("CheapUpscaler")
+            .WithSize(1200, 800)
+            .AddMudBlazor(config =>
+            {
+                config.SnackbarConfiguration.PositionClass = Defaults.Classes.Position.BottomRight;
+                config.SnackbarConfiguration.VisibleStateDuration = 2000;
+                config.SnackbarConfiguration.ShowTransitionDuration = 200;
+                config.SnackbarConfiguration.HideTransitionDuration = 200;
+            });
+
+        // Register CheapUpscaler.Core AI services
+        builder.Services.AddUpscalerServices();
+
+        // Configure graceful shutdown
+        builder.Services.Configure<HostOptions>(options =>
+        {
+            options.ShutdownTimeout = TimeSpan.FromSeconds(30);
+        });
+
+        builder.RunApp(args);
+    }
 }
-app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true);
-app.UseHttpsRedirection();
-
-app.UseAntiforgery();
-
-app.MapStaticAssets();
-app.MapRazorComponents<App>()
-    .AddInteractiveServerRenderMode();
-
-app.Run();

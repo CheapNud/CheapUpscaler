@@ -1,11 +1,19 @@
-﻿@using System.Net.Http
-@using System.Net.Http.Json
+@using System.Net.Http
 @using Microsoft.AspNetCore.Components.Forms
 @using Microsoft.AspNetCore.Components.Routing
 @using Microsoft.AspNetCore.Components.Web
-@using static Microsoft.AspNetCore.Components.Web.RenderMode
-@using Microsoft.AspNetCore.Components.Web.Virtualization
 @using Microsoft.JSInterop
+@using MudBlazor
+@using CheapAvaloniaBlazor.Services
 @using CheapUpscaler.Blazor
 @using CheapUpscaler.Blazor.Components
 @using CheapUpscaler.Blazor.Components.Layout
+@using CheapUpscaler.Blazor.Components.Pages
+@using CheapUpscaler.Core
+@using CheapUpscaler.Core.Services.VapourSynth
+@using CheapUpscaler.Core.Services.RIFE
+@using CheapUpscaler.Core.Services.RealCUGAN
+@using CheapUpscaler.Core.Services.RealESRGAN
+@using CheapUpscaler.Core.Services.Upscaling
+@using CheapHelpers.MediaProcessing.Services
+@using CheapHelpers.MediaProcessing.Models
