@@ -119,17 +119,22 @@ AI video upscaling and frame interpolation. Takes rendered video output (from Ch
 - [ ] Algorithm selector (Lanczos, xBR, HQx)
 - [ ] Scale factor selector (2x, 3x, 4x)
 
-### Settings Page - TODO
-- [ ] SettingsService for load/save
-- [ ] AppSettings model
-- [ ] Tool path configuration with browse
-- [ ] Default settings per upscale type
-- [ ] Hardware display (GPU, VRAM, CUDA)
+### Settings Page - COMPLETE
+- [x] AppSettings model (ToolPaths, DefaultUpscaleSettings, UiSettings, QueueSettings)
+- [x] SettingsService for load/save (JSON to AppData)
+- [x] Tool path configuration with browse (VapourSynth, Python, FFmpeg, vspipe)
+- [x] Default settings per upscale type (expansion panels)
+- [x] Queue settings (concurrent jobs, auto-start, output directory)
+- [x] UI settings (dark mode, notifications, sounds)
+- [x] Save/Reset to Defaults buttons
 
-### HardwareInfoCard Component - TODO
-- [ ] CPU/GPU display
-- [ ] NVENC availability
-- [ ] Encoder support matrix
+### HardwareInfoCard Component - COMPLETE
+- [x] CPU/GPU display
+- [x] NVIDIA GPU detection
+- [x] NVENC availability
+- [x] Quick Sync detection (Intel CPUs)
+- [x] Processing capabilities chips (TensorRT, CUDA, NVENC, CPU)
+- [x] Multi-GPU list display
 
 ---
 

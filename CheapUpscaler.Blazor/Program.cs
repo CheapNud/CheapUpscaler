@@ -28,11 +28,13 @@ class Program
         builder.Services.AddUpscalerServices();
 
         // Register CheapHelpers.MediaProcessing services
+        builder.Services.AddSingleton<SvpDetectionService>();
         builder.Services.AddSingleton<HardwareDetectionService>();
         builder.Services.AddSingleton<ExecutableDetectionService>();
 
         // Register Blazor services
         builder.Services.AddSingleton<DependencyChecker>();
+        builder.Services.AddSingleton<ISettingsService, SettingsService>();
 
         // Register queue infrastructure
         builder.Services.AddSingleton<IBackgroundTaskQueue, BackgroundTaskQueue>();

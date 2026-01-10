@@ -1,0 +1,174 @@
+@using CheapHelpers.MediaProcessing.Models
+@using CheapHelpers.MediaProcessing.Services
+@inject HardwareDetectionService HardwareService
+
+<MudPaper Elevation="2" Class="pa-4">
+    <MudStack Spacing="3">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+            <MudIcon Icon="@Icons.Material.Filled.Memory" Color="Color.Primary" />
+            <MudText Typo="Typo.h6">Hardware Information</MudText>
+            <MudSpacer />
+            <MudIconButton Icon="@Icons.Material.Filled.Refresh"
+                           Size="Size.Small"
+                           OnClick="@RefreshHardwareInfo"
+                           Disabled="@_isLoading" />
+        </MudStack>
+
+        @if (_isLoading)
+        {
+            <MudStack Spacing="2">
+                <MudSkeleton SkeletonType="SkeletonType.Text" Width="60%" />
+                <MudSkeleton SkeletonType="SkeletonType.Text" Width="80%" />
+                <MudSkeleton SkeletonType="SkeletonType.Text" Width="40%" />
+            </MudStack>
+        }
+        else if (_capabilities == null)
+        {
+            <MudAlert Severity="Severity.Warning" Dense="true">
+                Unable to detect hardware information
+            </MudAlert>
+        }
+        else
+        {
+            <MudSimpleTable Dense="true" Hover="true" Style="background-color: transparent;">
+                <tbody>
+                    <!-- GPU Info -->
+                    <tr>
+                        <td style="width: 140px;"><MudText Typo="Typo.body2" Color="Color.Secondary">GPU</MudText></td>
+                        <td>
+                            <MudText Typo="Typo.body2">
+                                @(_capabilities.GpuName ?? "Not detected")
+                            </MudText>
+                        </td>
+                    </tr>
+
+                    <!-- NVIDIA GPU -->
+                    <tr>
+                        <td><MudText Typo="Typo.body2" Color="Color.Secondary">NVIDIA GPU</MudText></td>
+                        <td>
+                            @if (_capabilities.HasNvidiaGpu)
+                            {
+                                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                                    <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Color="Color.Success" Size="Size.Small" />
+                                    <MudText Typo="Typo.body2" Color="Color.Success">Detected</MudText>
+                                </MudStack>
+                            }
+                            else
+                            {
+                                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                                    <MudIcon Icon="@Icons.Material.Filled.Cancel" Color="Color.Warning" Size="Size.Small" />
+                                    <MudText Typo="Typo.body2" Color="Color.Warning">Not detected</MudText>
+                                </MudStack>
+                            }
+                        </td>
+                    </tr>
+
+                    <!-- NVENC Info -->
+                    <tr>
+                        <td><MudText Typo="Typo.body2" Color="Color.Secondary">NVENC</MudText></td>
+                        <td>
+                            @if (_capabilities.NvencAvailable)
+                            {
+                                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                                    <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Color="Color.Success" Size="Size.Small" />
+                                    <MudText Typo="Typo.body2" Color="Color.Success">Available (hardware encoding)</MudText>
+                                </MudStack>
+                            }
+                            else
+                            {
+                                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                                    <MudIcon Icon="@Icons.Material.Filled.Cancel" Color="Color.Warning" Size="Size.Small" />
+                                    <MudText Typo="Typo.body2" Color="Color.Warning">Not available</MudText>
+                                </MudStack>
+                            }
+                        </td>
+                    </tr>
+
+                    <!-- CPU Info -->
+                    <tr>
+                        <td><MudText Typo="Typo.body2" Color="Color.Secondary">CPU</MudText></td>
+                        <td><MudText Typo="Typo.body2">@_capabilities.CpuName</MudText></td>
+                    </tr>
+
+                    <tr>
+                        <td><MudText Typo="Typo.body2" Color="Color.Secondary">CPU Cores</MudText></td>
+                        <td><MudText Typo="Typo.body2">@_capabilities.CpuCoreCount logical cores</MudText></td>
+                    </tr>
+
+                    @if (_capabilities.IsIntelCpu)
+                    {
+                        <tr>
+                            <td><MudText Typo="Typo.body2" Color="Color.Secondary">Quick Sync</MudText></td>
+                            <td>
+                                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                                    <MudIcon Icon="@Icons.Material.Filled.Info" Color="Color.Info" Size="Size.Small" />
+                                    <MudText Typo="Typo.body2" Color="Color.Info">Intel CPU (QSV possible)</MudText>
+                                </MudStack>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </MudSimpleTable>
+
+            <!-- Capability Summary -->
+            <MudDivider Class="my-2" />
+            <MudText Typo="Typo.subtitle2" Color="Color.Secondary">Processing Capabilities</MudText>
+            <MudStack Row="true" Spacing="1" Wrap="Wrap.Wrap">
+                @if (_capabilities.HasNvidiaGpu)
+                {
+                    <MudChip T="string" Color="Color.Success" Size="Size.Small" Icon="@Icons.Material.Filled.Check">TensorRT</MudChip>
+                    <MudChip T="string" Color="Color.Success" Size="Size.Small" Icon="@Icons.Material.Filled.Check">CUDA</MudChip>
+                }
+                @if (_capabilities.NvencAvailable)
+                {
+                    <MudChip T="string" Color="Color.Success" Size="Size.Small" Icon="@Icons.Material.Filled.Check">NVENC</MudChip>
+                }
+                @if (_capabilities.IsIntelCpu)
+                {
+                    <MudChip T="string" Color="Color.Info" Size="Size.Small" Icon="@Icons.Material.Filled.Check">Quick Sync</MudChip>
+                }
+                <MudChip T="string" Color="Color.Default" Size="Size.Small" Icon="@Icons.Material.Filled.Check">CPU</MudChip>
+            </MudStack>
+
+            <!-- Available GPUs -->
+            @if (_capabilities.AvailableGpus.Count > 1)
+            {
+                <MudDivider Class="my-2" />
+                <MudText Typo="Typo.subtitle2" Color="Color.Secondary">Available GPUs</MudText>
+                <MudStack Spacing="1">
+                    @foreach (var gpu in _capabilities.AvailableGpus)
+                    {
+                        <MudText Typo="Typo.body2">• @gpu</MudText>
+                    }
+                </MudStack>
+            }
+        }
+    </MudStack>
+</MudPaper>
+
+@code {
+    private HardwareCapabilities? _capabilities;
+    private bool _isLoading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await RefreshHardwareInfo();
+    }
+
+    private async Task RefreshHardwareInfo()
+    {
+        _isLoading = true;
+        StateHasChanged();
+
+        try
+        {
+            _capabilities = await HardwareService.DetectHardwareAsync();
+        }
+        catch
+        {
+            _capabilities = null;
+        }
+
+        _isLoading = false;
+    }
+}
