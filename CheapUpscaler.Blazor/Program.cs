@@ -1,7 +1,9 @@
 using CheapAvaloniaBlazor.Extensions;
 using CheapHelpers.MediaProcessing.Services;
+using CheapUpscaler.Blazor.Data;
 using CheapUpscaler.Blazor.Services;
 using CheapUpscaler.Core;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using MudBlazor;
@@ -35,6 +37,17 @@ class Program
         // Register Blazor services
         builder.Services.AddSingleton<DependencyChecker>();
         builder.Services.AddSingleton<ISettingsService, SettingsService>();
+        builder.Services.AddSingleton<IUpscaleProcessorService, UpscaleProcessorService>();
+
+        // Configure database (SQLite in AppData)
+        var appDataPath = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+        var dbDirectory = Path.Combine(appDataPath, "CheapUpscaler");
+        Directory.CreateDirectory(dbDirectory);
+        var dbPath = Path.Combine(dbDirectory, "upscaler.db");
+
+        builder.Services.AddDbContextFactory<UpscaleJobDbContext>(options =>
+            options.UseSqlite($"Data Source={dbPath}"));
+        builder.Services.AddSingleton<IUpscaleJobRepository, UpscaleJobRepository>();
 
         // Register queue infrastructure
         builder.Services.AddSingleton<IBackgroundTaskQueue, BackgroundTaskQueue>();
@@ -48,6 +61,19 @@ class Program
             options.ShutdownTimeout = TimeSpan.FromSeconds(30);
         });
 
+        // Ensure database is created
+        EnsureDatabaseCreated(dbPath);
+
         builder.RunApp(args);
+    }
+
+    private static void EnsureDatabaseCreated(string dbPath)
+    {
+        var options = new DbContextOptionsBuilder<UpscaleJobDbContext>()
+            .UseSqlite($"Data Source={dbPath}")
+            .Options;
+
+        using var context = new UpscaleJobDbContext(options);
+        context.Database.EnsureCreated();
     }
 }

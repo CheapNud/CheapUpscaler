@@ -74,9 +74,17 @@ AI video upscaling and frame interpolation. Takes rendered video output (from Ch
 - [x] UpscaleJobCard.razor component with progress + actions
 - [x] Real-time progress updates via events (throttled 100ms)
 - [x] Queue start/pause/stop controls
-- [ ] Create `UpscaleJobDbContext` for persistence
-- [ ] Create `UpscaleJobRepository`
-- [ ] Integrate with actual upscaling services (currently simulated)
+
+### Database Persistence - COMPLETE
+- [x] Create `UpscaleJobDbContext` (SQLite in AppData)
+- [x] Create `UpscaleJobEntity` with model conversion
+- [x] Create `IUpscaleJobRepository` interface
+- [x] Create `UpscaleJobRepository` implementation (EF Core)
+- [x] Update `UpscaleQueueService` to use repository
+- [x] Jobs persist across app restarts
+- [x] Running jobs marked as failed on shutdown recovery
+- [x] Pending jobs re-queued on startup
+- [x] Integrate with actual upscaling services via UpscaleProcessorService
 
 ### Add Upscale Job Dialog - COMPLETE
 - [x] AddUpscaleJobDialog.razor with MudDialog

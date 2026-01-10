@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using CheapUpscaler.Blazor.Data;
 using CheapUpscaler.Blazor.Models;
 using Microsoft.Extensions.Hosting;
 
@@ -7,15 +8,18 @@ namespace CheapUpscaler.Blazor.Services;
 
 /// <summary>
 /// Manages the upscale job queue and processes jobs in the background
-/// In-memory implementation for initial development - can be extended with database persistence
+/// Uses database persistence with in-memory cache for fast access
 /// </summary>
 public class UpscaleQueueService : BackgroundService, IUpscaleQueueService
 {
     private readonly IServiceProvider _serviceProvider;
     private readonly IBackgroundTaskQueue _taskQueue;
+    private readonly IUpscaleJobRepository _repository;
+    private readonly IUpscaleProcessorService _processor;
     private readonly ConcurrentDictionary<Guid, UpscaleJob> _jobs = new();
     private readonly SemaphoreSlim _processingSemaphore;
     private volatile bool _isQueuePaused = true;
+    private bool _isInitialized;
 
     public event EventHandler<UpscaleProgressEventArgs>? ProgressChanged;
     public event EventHandler<UpscaleProgressEventArgs>? StatusChanged;
@@ -26,11 +30,57 @@ public class UpscaleQueueService : BackgroundService, IUpscaleQueueService
     public UpscaleQueueService(
         IServiceProvider serviceProvider,
         IBackgroundTaskQueue taskQueue,
+        IUpscaleJobRepository repository,
+        IUpscaleProcessorService processor,
         int maxConcurrentJobs = 1)
     {
         _serviceProvider = serviceProvider;
         _taskQueue = taskQueue;
+        _repository = repository;
+        _processor = processor;
         _processingSemaphore = new SemaphoreSlim(maxConcurrentJobs, maxConcurrentJobs);
+    }
+
+    /// <summary>
+    /// Load jobs from database into memory cache
+    /// </summary>
+    private async Task InitializeAsync()
+    {
+        if (_isInitialized) return;
+
+        try
+        {
+            var jobs = await _repository.GetAllAsync();
+            foreach (var job in jobs)
+            {
+                _jobs[job.JobId] = job;
+
+                // Re-queue pending jobs
+                if (job.Status == UpscaleJobStatus.Pending)
+                {
+                    await _taskQueue.QueueBackgroundWorkItemAsync(async token =>
+                    {
+                        await ProcessJobAsync(job.JobId, token);
+                    });
+                }
+                // Mark running jobs as failed (interrupted by shutdown)
+                else if (job.Status == UpscaleJobStatus.Running)
+                {
+                    job.Status = UpscaleJobStatus.Failed;
+                    job.LastError = "Job interrupted by application shutdown";
+                    job.CompletedAt = DateTime.UtcNow;
+                    await _repository.UpdateAsync(job);
+                }
+            }
+
+            Debug.WriteLine($"Loaded {jobs.Count()} jobs from database");
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Error loading jobs from database: {ex.Message}");
+        }
+
+        _isInitialized = true;
     }
 
     public void StartQueue()
@@ -51,6 +101,11 @@ public class UpscaleQueueService : BackgroundService, IUpscaleQueueService
     {
         job.QueuedAt = DateTime.UtcNow;
         job.Status = UpscaleJobStatus.Pending;
+
+        // Persist to database
+        await _repository.AddAsync(job);
+
+        // Add to memory cache
         _jobs[job.JobId] = job;
 
         // Queue the processing task
@@ -63,31 +118,33 @@ public class UpscaleQueueService : BackgroundService, IUpscaleQueueService
         return job.JobId;
     }
 
-    public Task<bool> PauseJobAsync(Guid jobId)
+    public async Task<bool> PauseJobAsync(Guid jobId)
     {
         if (_jobs.TryGetValue(jobId, out var job) && job.Status == UpscaleJobStatus.Running)
         {
             job.Status = UpscaleJobStatus.Paused;
             job.LastUpdatedAt = DateTime.UtcNow;
+            await _repository.UpdateAsync(job);
             OnStatusChanged(job);
-            return Task.FromResult(true);
+            return true;
         }
-        return Task.FromResult(false);
+        return false;
     }
 
-    public Task<bool> ResumeJobAsync(Guid jobId)
+    public async Task<bool> ResumeJobAsync(Guid jobId)
     {
         if (_jobs.TryGetValue(jobId, out var job) && job.Status == UpscaleJobStatus.Paused)
         {
             job.Status = UpscaleJobStatus.Pending;
             job.LastUpdatedAt = DateTime.UtcNow;
+            await _repository.UpdateAsync(job);
             OnStatusChanged(job);
-            return Task.FromResult(true);
+            return true;
         }
-        return Task.FromResult(false);
+        return false;
     }
 
-    public Task<bool> CancelJobAsync(Guid jobId)
+    public async Task<bool> CancelJobAsync(Guid jobId)
     {
         if (_jobs.TryGetValue(jobId, out var job) &&
             (job.Status == UpscaleJobStatus.Pending ||
@@ -97,13 +154,14 @@ public class UpscaleQueueService : BackgroundService, IUpscaleQueueService
             job.Status = UpscaleJobStatus.Cancelled;
             job.LastUpdatedAt = DateTime.UtcNow;
             job.CompletedAt = DateTime.UtcNow;
+            await _repository.UpdateAsync(job);
             OnStatusChanged(job);
-            return Task.FromResult(true);
+            return true;
         }
-        return Task.FromResult(false);
+        return false;
     }
 
-    public Task<bool> RetryJobAsync(Guid jobId)
+    public async Task<bool> RetryJobAsync(Guid jobId)
     {
         if (_jobs.TryGetValue(jobId, out var job) &&
             (job.Status == UpscaleJobStatus.Failed || job.Status == UpscaleJobStatus.Cancelled))
@@ -117,26 +175,29 @@ public class UpscaleQueueService : BackgroundService, IUpscaleQueueService
             job.LastUpdatedAt = DateTime.UtcNow;
             job.CompletedAt = null;
 
+            await _repository.UpdateAsync(job);
+
             // Re-queue for processing
-            _ = _taskQueue.QueueBackgroundWorkItemAsync(async token =>
+            await _taskQueue.QueueBackgroundWorkItemAsync(async token =>
             {
                 await ProcessJobAsync(job.JobId, token);
             });
 
             OnStatusChanged(job);
-            return Task.FromResult(true);
+            return true;
         }
-        return Task.FromResult(false);
+        return false;
     }
 
-    public Task<bool> DeleteJobAsync(Guid jobId)
+    public async Task<bool> DeleteJobAsync(Guid jobId)
     {
         if (_jobs.TryRemove(jobId, out _))
         {
+            await _repository.DeleteAsync(jobId);
             Debug.WriteLine($"Job {jobId} deleted");
-            return Task.FromResult(true);
+            return true;
         }
-        return Task.FromResult(false);
+        return false;
     }
 
     public Task<UpscaleJob?> GetJobAsync(Guid jobId)
@@ -188,25 +249,41 @@ public class UpscaleQueueService : BackgroundService, IUpscaleQueueService
         return Task.FromResult(stats);
     }
 
-    public Task<int> ClearCompletedJobsAsync()
+    public async Task<int> ClearCompletedJobsAsync()
     {
         var completedJobs = _jobs.Values.Where(j => j.Status == UpscaleJobStatus.Completed).ToList();
         foreach (var job in completedJobs)
         {
             _jobs.TryRemove(job.JobId, out _);
         }
-        return Task.FromResult(completedJobs.Count);
+        var count = await _repository.DeleteByStatusAsync(UpscaleJobStatus.Completed);
+        return count;
     }
 
-    public Task<int> ClearAllJobsAsync()
+    public async Task<int> ClearAllJobsAsync()
     {
         var count = _jobs.Count;
         _jobs.Clear();
-        return Task.FromResult(count);
+
+        // Delete all from database
+        await _repository.DeleteByStatusAsync(
+            UpscaleJobStatus.Pending,
+            UpscaleJobStatus.Running,
+            UpscaleJobStatus.Paused,
+            UpscaleJobStatus.Completed,
+            UpscaleJobStatus.Failed,
+            UpscaleJobStatus.Cancelled);
+
+        return count;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        Debug.WriteLine("UpscaleQueueService starting...");
+
+        // Initialize from database
+        await InitializeAsync();
+
         Debug.WriteLine("UpscaleQueueService started");
 
         while (!stoppingToken.IsCancellationRequested)
@@ -258,17 +335,35 @@ public class UpscaleQueueService : BackgroundService, IUpscaleQueueService
             job.StartedAt = DateTime.UtcNow;
             job.ProcessId = Environment.ProcessId;
             job.MachineName = Environment.MachineName;
+            await _repository.UpdateAsync(job);
             OnStatusChanged(job);
 
-            // TODO: Integrate with actual upscaling services based on job.UpscaleType
-            // For now, simulate processing
-            await SimulateProcessingAsync(job, cancellationToken);
+            // Create progress reporter that updates the job and fires events
+            var progress = new Progress<double>(percentage =>
+            {
+                job.ProgressPercentage = percentage;
+                job.LastUpdatedAt = DateTime.UtcNow;
+                OnProgressChanged(job);
+            });
 
-            if (job.Status == UpscaleJobStatus.Running) // Wasn't cancelled during processing
+            // Process using the actual upscaling service
+            var success = await _processor.ProcessJobAsync(job, progress, cancellationToken);
+
+            if (success && job.Status == UpscaleJobStatus.Running) // Wasn't cancelled during processing
             {
                 job.Status = UpscaleJobStatus.Completed;
                 job.CompletedAt = DateTime.UtcNow;
                 job.ProgressPercentage = 100;
+                await _repository.UpdateAsync(job);
+                OnStatusChanged(job);
+            }
+            else if (!success && job.Status == UpscaleJobStatus.Running)
+            {
+                // Processing returned false (failure or cancellation without exception)
+                job.Status = UpscaleJobStatus.Failed;
+                job.LastError = "Processing failed";
+                job.CompletedAt = DateTime.UtcNow;
+                await _repository.UpdateAsync(job);
                 OnStatusChanged(job);
             }
         }
@@ -276,6 +371,7 @@ public class UpscaleQueueService : BackgroundService, IUpscaleQueueService
         {
             job.Status = UpscaleJobStatus.Cancelled;
             job.CompletedAt = DateTime.UtcNow;
+            await _repository.UpdateAsync(job);
             OnStatusChanged(job);
         }
         catch (Exception ex)
@@ -284,6 +380,7 @@ public class UpscaleQueueService : BackgroundService, IUpscaleQueueService
             job.LastError = ex.Message;
             job.ErrorStackTrace = ex.StackTrace;
             job.CompletedAt = DateTime.UtcNow;
+            await _repository.UpdateAsync(job);
             OnStatusChanged(job);
         }
         finally
@@ -291,36 +388,6 @@ public class UpscaleQueueService : BackgroundService, IUpscaleQueueService
             job.ProcessId = null;
             job.LastUpdatedAt = DateTime.UtcNow;
             _processingSemaphore.Release();
-        }
-    }
-
-    /// <summary>
-    /// Simulate processing for testing (replace with actual upscaling integration)
-    /// </summary>
-    private async Task SimulateProcessingAsync(UpscaleJob job, CancellationToken cancellationToken)
-    {
-        job.TotalFrames = 1000; // Simulated
-        var random = new Random();
-
-        for (int frame = 0; frame <= job.TotalFrames; frame += random.Next(5, 20))
-        {
-            if (cancellationToken.IsCancellationRequested || job.Status == UpscaleJobStatus.Cancelled)
-                break;
-
-            // Wait while paused
-            while (job.Status == UpscaleJobStatus.Paused && !cancellationToken.IsCancellationRequested)
-            {
-                await Task.Delay(500, cancellationToken);
-            }
-
-            job.CurrentFrame = Math.Min(frame, job.TotalFrames.Value);
-            job.ProgressPercentage = (job.CurrentFrame / (double)job.TotalFrames.Value) * 100;
-            job.EstimatedTimeRemaining = TimeSpan.FromSeconds((job.TotalFrames.Value - job.CurrentFrame) * 0.1);
-            job.LastUpdatedAt = DateTime.UtcNow;
-
-            OnProgressChanged(job);
-
-            await Task.Delay(100, cancellationToken); // Simulate processing time
         }
     }
 
