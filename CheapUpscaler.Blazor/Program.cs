@@ -1,4 +1,6 @@
 using CheapAvaloniaBlazor.Extensions;
+using CheapHelpers.MediaProcessing.Services;
+using CheapUpscaler.Blazor.Services;
 using CheapUpscaler.Core;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -24,6 +26,19 @@ class Program
 
         // Register CheapUpscaler.Core AI services
         builder.Services.AddUpscalerServices();
+
+        // Register CheapHelpers.MediaProcessing services
+        builder.Services.AddSingleton<HardwareDetectionService>();
+        builder.Services.AddSingleton<ExecutableDetectionService>();
+
+        // Register Blazor services
+        builder.Services.AddSingleton<DependencyChecker>();
+
+        // Register queue infrastructure
+        builder.Services.AddSingleton<IBackgroundTaskQueue, BackgroundTaskQueue>();
+        builder.Services.AddSingleton<UpscaleQueueService>();
+        builder.Services.AddSingleton<IUpscaleQueueService>(sp => sp.GetRequiredService<UpscaleQueueService>());
+        builder.Services.AddHostedService(sp => sp.GetRequiredService<UpscaleQueueService>());
 
         // Configure graceful shutdown
         builder.Services.Configure<HostOptions>(options =>

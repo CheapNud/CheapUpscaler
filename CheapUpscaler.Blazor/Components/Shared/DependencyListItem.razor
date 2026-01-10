@@ -1,0 +1,115 @@
+@using CheapUpscaler.Blazor.Models
+
+<MudPaper Class="pa-3" Elevation="1">
+    <MudGrid>
+        <!-- Status Icon and Name -->
+        <MudItem xs="12" sm="6" md="4">
+            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                @if (Dependency.IsInstalled)
+                {
+                    <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Color="Color.Success" />
+                }
+                else
+                {
+                    <MudIcon Icon="@Icons.Material.Filled.Cancel" Color="Color.Error" />
+                }
+                <MudStack Spacing="0">
+                    <MudText Typo="Typo.subtitle1" Style="font-weight: 500;">@Dependency.Name</MudText>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">
+                        @GetCategoryText()
+                    </MudText>
+                </MudStack>
+            </MudStack>
+        </MudItem>
+
+        <!-- Version/Path Info -->
+        <MudItem xs="12" sm="6" md="4">
+            @if (Dependency.IsInstalled)
+            {
+                <MudStack Spacing="0">
+                    @if (!string.IsNullOrEmpty(Dependency.Version))
+                    {
+                        <MudText Typo="Typo.body2">
+                            <MudIcon Icon="@Icons.Material.Filled.Info" Size="Size.Small" Class="mr-1" />
+                            Version: @Dependency.Version
+                        </MudText>
+                    }
+                    @if (!string.IsNullOrEmpty(Dependency.Path))
+                    {
+                        <MudText Typo="Typo.caption" Color="Color.Secondary" Style="word-break: break-all;">
+                            @TruncatePath(Dependency.Path)
+                        </MudText>
+                    }
+                </MudStack>
+            }
+            else
+            {
+                <MudText Typo="Typo.body2" Color="Color.Error">
+                    Not installed
+                </MudText>
+                @if (!string.IsNullOrEmpty(Dependency.ErrorMessage))
+                {
+                    <MudText Typo="Typo.caption" Color="Color.Error">
+                        @Dependency.ErrorMessage
+                    </MudText>
+                }
+            }
+        </MudItem>
+
+        <!-- Actions -->
+        <MudItem xs="12" md="4">
+            <MudStack Row="true" Justify="Justify.FlexEnd" Spacing="1">
+                @if (!Dependency.IsInstalled && !string.IsNullOrEmpty(Dependency.DownloadUrl))
+                {
+                    <MudButton Variant="Variant.Outlined"
+                               Size="Size.Small"
+                               Color="Color.Primary"
+                               StartIcon="@Icons.Material.Filled.Download"
+                               Href="@Dependency.DownloadUrl"
+                               Target="_blank">
+                        Download
+                    </MudButton>
+                }
+                @if (!string.IsNullOrEmpty(Dependency.InstallInstructions))
+                {
+                    <MudTooltip Text="@Dependency.InstallInstructions" Placement="Placement.Left">
+                        <MudIconButton Icon="@Icons.Material.Filled.Help"
+                                       Size="Size.Small"
+                                       Color="Color.Default" />
+                    </MudTooltip>
+                }
+            </MudStack>
+        </MudItem>
+
+        <!-- Description (full width) -->
+        <MudItem xs="12">
+            <MudText Typo="Typo.body2" Color="Color.Secondary">
+                @Dependency.Description
+            </MudText>
+        </MudItem>
+    </MudGrid>
+</MudPaper>
+
+@code {
+    [Parameter]
+    public required DependencyInfo Dependency { get; set; }
+
+    private string GetCategoryText() => Dependency.Category switch
+    {
+        DependencyCategory.Required => "Required",
+        DependencyCategory.Recommended => "Recommended",
+        DependencyCategory.Optional => "Optional",
+        _ => "Unknown"
+    };
+
+    private static string TruncatePath(string path, int maxLength = 50)
+    {
+        if (string.IsNullOrEmpty(path) || path.Length <= maxLength)
+            return path;
+
+        // Show start and end of path
+        var start = path[..20];
+        var end = path[^25..];
+        return $"{start}...{end}";
+    }
+}

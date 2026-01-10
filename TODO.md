@@ -7,6 +7,12 @@ AI video upscaling and frame interpolation. Takes rendered video output (from Ch
 - Real-ESRGAN AI upscaling (general content)
 - Non-AI upscaling (Lanczos, xBR, HQx)
 
+## Deployment Strategy
+| Phase | Target | Platform | Purpose |
+|-------|--------|----------|---------|
+| **Now** | Desktop App | Windows | Development, testing, local use with GUI |
+| **Future** | Worker Service | Ubuntu Server | 24/7 headless processing on Tranquility |
+
 ---
 
 ## Core Library (CheapUpscaler.Core) - COMPLETE
@@ -22,87 +28,102 @@ AI video upscaling and frame interpolation. Takes rendered video output (from Ch
 
 ---
 
-## Blazor UI (CheapUpscaler.Blazor) - TODO
+## Blazor UI (CheapUpscaler.Blazor)
 
-### Video Source Selection
-- [ ] Create video file browser dialog (mp4, mkv, avi, mov)
+### Framework & Infrastructure - COMPLETE
+- [x] Convert to CheapAvaloniaBlazor desktop app
+- [x] Add MudBlazor UI components
+- [x] Add EF Core SQLite for persistence
+- [x] Program.cs with HostBuilder setup
+- [x] _Host.cshtml with MudBlazor CSS
+- [x] _Imports.razor with all namespaces
+- [x] App.razor router with NotFound handling
+
+### Navigation & Layout - COMPLETE
+- [x] MainLayout with MudBlazor drawer navigation
+- [x] Dark mode toggle
+- [x] Navigation links (Home, Queue, Dependencies, Settings)
+- [x] Home page with quick action cards
+- [x] Upscaling methods overview
+
+### Dependency Manager Page - COMPLETE
+- [x] DependencyChecker service
+- [x] DependencyInfo model
+- [x] DependencyStatus model
+- [x] VapourSynth detection
+- [x] Python detection (with version check)
+- [x] FFmpeg detection
+- [x] vs-mlrt plugin detection
+- [x] RIFE detection (TensorRT and Vulkan variants)
+- [x] TensorRT runtime detection
+- [x] CUDA toolkit detection
+- [x] Health percentage indicator
+- [x] Manual installation instructions (tooltips + download links)
+- [x] DependencyManager.razor page
+- [x] DependencyListItem.razor component
+
+### Upscaling Queue Management - IN PROGRESS
+- [x] Create `UpscaleJob` model
+- [x] Create `UpscaleJobStatus` enum
+- [x] Create `UpscaleType` enum
+- [x] Create `UpscaleProgressEventArgs` and `QueueStatistics` models
+- [x] Create `IUpscaleQueueService` interface
+- [x] Create `UpscaleQueueService` implementation (BackgroundService)
+- [x] Create `BackgroundTaskQueue` infrastructure (Channel-based)
+- [x] UpscaleQueue.razor page with tabs (Active/Completed/Failed)
+- [x] UpscaleJobCard.razor component with progress + actions
+- [x] Real-time progress updates via events (throttled 100ms)
+- [x] Queue start/pause/stop controls
+- [ ] Create `UpscaleJobDbContext` for persistence
+- [ ] Create `UpscaleJobRepository`
+- [ ] Integrate with actual upscaling services (currently simulated)
+
+### Add Upscale Job Dialog - TODO
+- [ ] AddUpscaleJobDialog.razor
+- [ ] Video file picker (via IDesktopInteropService)
+- [ ] Upscale type selector (RIFE/RealCUGAN/RealESRGAN/NonAI)
+- [ ] Type-specific settings panels
+- [ ] Output path with auto-naming
+
+### Video Source Selection - TODO
 - [ ] Display source video info (resolution, duration, frame rate, codec)
 - [ ] Preview thumbnail generation
-- [ ] Output path selection with auto-naming based on processing type
 
-### RIFE Interpolation Settings UI
+### RIFE Interpolation Settings UI - TODO
 - [ ] Interpolation multiplier slider (2x, 4x, 8x)
 - [ ] Target FPS numeric input (30-240)
 - [ ] Quality preset selector (Draft/Medium/High)
 - [ ] RIFE variant selector (if multiple installed)
 - [ ] GPU selection dropdown
-- [ ] Estimated output FPS display
 
-### Real-CUGAN Settings UI
+### Real-CUGAN Settings UI - TODO
 - [ ] Noise reduction level selector (-1 to 3)
 - [ ] Scale factor selector (2x, 3x, 4x)
 - [ ] Backend selector (TensorRT/CUDA/CPU)
 - [ ] FP16 mode toggle
-- [ ] Parallel streams slider (1-8)
 - [ ] GPU device selector
-- [ ] Noise/scale compatibility warning
-- [ ] Estimated processing speed display
 
-### Real-ESRGAN Settings UI
-- [ ] Model selector (RealESRGAN_x4plus, anime_6B, x2plus, general-x4v3, AnimeVideo-v3)
+### Real-ESRGAN Settings UI - TODO
+- [ ] Model selector (RealESRGAN_x4plus, anime_6B, x2plus, etc.)
 - [ ] Scale factor selector (2x, 4x)
-- [ ] Tile size input (0-1024)
+- [ ] Tile size input
 - [ ] FP16 mode toggle
-- [ ] Tile mode toggle
-- [ ] GPU device selector
-- [ ] Performance warning (slow processing)
 
-### Non-AI Upscaling Settings UI
+### Non-AI Upscaling Settings UI - TODO
 - [ ] Algorithm selector (Lanczos, xBR, HQx)
 - [ ] Scale factor selector (2x, 3x, 4x)
-- [ ] Content type hint (general vs pixel art)
-- [ ] Performance estimate (near real-time)
 
-### Upscaling Queue Management
-- [ ] Create `UpscaleJob` model (similar to RenderJob)
-- [ ] Create `IUpscaleQueueService` interface
-- [ ] Create `UpscaleQueueService` implementation
-- [ ] Create `UpscaleJobRepository` for persistence
-- [ ] Queue page with active/completed/failed tabs
-- [ ] Job card component with progress, ETA, file sizes
-- [ ] Start/pause/cancel queue controls
-- [ ] Individual job pause/resume/cancel/retry
-- [ ] Real-time progress updates via events
+### Settings Page - TODO
+- [ ] SettingsService for load/save
+- [ ] AppSettings model
+- [ ] Tool path configuration with browse
+- [ ] Default settings per upscale type
+- [ ] Hardware display (GPU, VRAM, CUDA)
 
-### Dependency Manager Page
-- [ ] VapourSynth detection and installation
-- [ ] Python detection (with version check)
-- [ ] PyTorch detection and installation
-- [ ] vs-mlrt plugin detection and installation
-- [ ] RIFE detection (SVP and Practical-RIFE variants)
-- [ ] TensorRT runtime detection
-- [ ] CUDA toolkit detection
-- [ ] Health percentage indicator
-- [ ] Auto-install missing dependencies button
-- [ ] Manual installation instructions
-
-### Settings Page
-- [ ] Default RIFE settings
-- [ ] Default Real-CUGAN settings
-- [ ] Default Real-ESRGAN settings
-- [ ] Default Non-AI upscaling settings
-- [ ] Custom paths (VapourSynth, Python, RIFE folder)
-- [ ] Hardware detection display (GPU, VRAM, CUDA version)
-- [ ] Theme/appearance settings
-
-### Navigation & Layout
-- [ ] Create MainLayout with sidebar navigation
-- [ ] Home/Dashboard page with quick actions
-- [ ] Upscale page (main processing UI)
-- [ ] Queue page
-- [ ] Dependencies page
-- [ ] Settings page
-- [ ] About page
+### HardwareInfoCard Component - TODO
+- [ ] CPU/GPU display
+- [ ] NVENC availability
+- [ ] Encoder support matrix
 
 ---
 
@@ -115,3 +136,16 @@ AI video upscaling and frame interpolation. Takes rendered video output (from Ch
 - [ ] Integration with CheapShotcutRandomizer (direct handoff)
 - [ ] Hardware benchmark tool
 - [ ] Processing history/statistics
+
+---
+
+## Future: Ubuntu Worker Service
+
+When ready to deploy to Tranquility (Ubuntu server):
+
+- [ ] Create CheapUpscaler.Worker project (.NET Worker Service)
+- [ ] Extract queue processing logic (headless)
+- [ ] API endpoint for job submission
+- [ ] File system watcher for watch folder
+- [ ] Linux path configuration
+- [ ] Docker container with nvidia-docker GPU passthrough
