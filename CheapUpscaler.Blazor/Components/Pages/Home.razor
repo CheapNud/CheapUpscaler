@@ -1,4 +1,10 @@
 @page "/"
+@using CheapUpscaler.Blazor.Components.Shared
+@using CheapUpscaler.Blazor.Models
+@using CheapUpscaler.Blazor.Services
+@inject IDialogService DialogService
+@inject IUpscaleQueueService QueueService
+@inject ISnackbar Snackbar
 
 <PageTitle>CheapUpscaler - Home</PageTitle>
 
@@ -24,7 +30,7 @@
                 </MudText>
             </MudCardContent>
             <MudCardActions>
-                <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" Disabled="true">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="@OpenAddJobDialog">
                     New Job
                 </MudButton>
             </MudCardActions>
@@ -143,3 +149,24 @@
         </MudPaper>
     </MudItem>
 </MudGrid>
+
+@code {
+    private async Task OpenAddJobDialog()
+    {
+        var options = new DialogOptions
+        {
+            MaxWidth = MaxWidth.Medium,
+            FullWidth = true,
+            CloseOnEscapeKey = true
+        };
+
+        var dialog = await DialogService.ShowAsync<AddUpscaleJobDialog>("Add Upscale Job", options);
+        var result = await dialog.Result;
+
+        if (result is { Canceled: false, Data: UpscaleJob job })
+        {
+            await QueueService.AddJobAsync(job);
+            Snackbar.Add($"Job added: {Path.GetFileName(job.SourceVideoPath)}", Severity.Success);
+        }
+    }
+}

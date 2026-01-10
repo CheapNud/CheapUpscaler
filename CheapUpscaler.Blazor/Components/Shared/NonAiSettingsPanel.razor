@@ -1,0 +1,66 @@
+@using static CheapUpscaler.Blazor.Components.Shared.AddUpscaleJobDialog
+
+<MudStack Spacing="3">
+    <MudText Typo="Typo.subtitle2" Color="Color.Primary">Non-AI Upscaling Settings</MudText>
+
+    <MudSelect T="string"
+               Value="Settings.Algorithm"
+               ValueChanged="@(v => UpdateSettings(s => s.Algorithm = v))"
+               Label="Algorithm"
+               Variant="Variant.Outlined"
+               HelperText="Traditional upscaling algorithm">
+        <MudSelectItem Value="@("Lanczos")">
+            <MudStack>
+                <MudText>Lanczos</MudText>
+                <MudText Typo="Typo.caption" Color="Color.Secondary">High-quality general purpose, fast</MudText>
+            </MudStack>
+        </MudSelectItem>
+        <MudSelectItem Value="@("xBR")">
+            <MudStack>
+                <MudText>xBR</MudText>
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Pixel art optimized, preserves edges</MudText>
+            </MudStack>
+        </MudSelectItem>
+        <MudSelectItem Value="@("HQx")">
+            <MudStack>
+                <MudText>HQx</MudText>
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Classic pixel art scaler</MudText>
+            </MudStack>
+        </MudSelectItem>
+        <MudSelectItem Value="@("Bicubic")">
+            <MudStack>
+                <MudText>Bicubic</MudText>
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Standard bicubic interpolation</MudText>
+            </MudStack>
+        </MudSelectItem>
+    </MudSelect>
+
+    <MudSelect T="int"
+               Value="Settings.Scale"
+               ValueChanged="@(v => UpdateSettings(s => s.Scale = v))"
+               Label="Scale Factor"
+               Variant="Variant.Outlined"
+               HelperText="Output resolution multiplier">
+        <MudSelectItem Value="2">2x</MudSelectItem>
+        <MudSelectItem Value="3">3x</MudSelectItem>
+        <MudSelectItem Value="4">4x</MudSelectItem>
+    </MudSelect>
+
+    <MudAlert Severity="Severity.Info" Dense="true" Class="mt-2">
+        Non-AI upscaling is fast and uses no GPU, but results are less detailed than AI methods.
+    </MudAlert>
+</MudStack>
+
+@code {
+    [Parameter]
+    public NonAiJobSettings Settings { get; set; } = new();
+
+    [Parameter]
+    public EventCallback<NonAiJobSettings> SettingsChanged { get; set; }
+
+    private async Task UpdateSettings(Action<NonAiJobSettings> update)
+    {
+        update(Settings);
+        await SettingsChanged.InvokeAsync(Settings);
+    }
+}

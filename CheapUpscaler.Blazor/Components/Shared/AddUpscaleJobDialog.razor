@@ -1,0 +1,269 @@
+@using CheapAvaloniaBlazor.Models
+@using CheapAvaloniaBlazor.Services
+@using CheapUpscaler.Blazor.Models
+@inject IDesktopInteropService DesktopInterop
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <TitleContent>
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+            <MudIcon Icon="@Icons.Material.Filled.VideoSettings" />
+            <MudText Typo="Typo.h6">Add Upscale Job</MudText>
+        </MudStack>
+    </TitleContent>
+    <DialogContent>
+        <MudStack Spacing="4" Class="mt-2">
+            <!-- Source Video Selection -->
+            <MudStack Spacing="1">
+                <MudText Typo="Typo.subtitle2">Source Video</MudText>
+                <MudStack Row="true" Spacing="2">
+                    <MudTextField @bind-Value="_sourcePath"
+                                  Placeholder="Select a video file..."
+                                  ReadOnly="true"
+                                  Variant="Variant.Outlined"
+                                  Adornment="Adornment.Start"
+                                  AdornmentIcon="@Icons.Material.Filled.VideoFile"
+                                  Style="flex-grow: 1;" />
+                    <MudButton Variant="Variant.Filled"
+                               Color="Color.Primary"
+                               StartIcon="@Icons.Material.Filled.FolderOpen"
+                               OnClick="@BrowseSourceFile">
+                        Browse
+                    </MudButton>
+                </MudStack>
+                @if (!string.IsNullOrEmpty(_sourcePath))
+                {
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">
+                        @Path.GetFileName(_sourcePath)
+                    </MudText>
+                }
+            </MudStack>
+
+            <!-- Upscale Type Selection -->
+            <MudStack Spacing="1">
+                <MudText Typo="Typo.subtitle2">Upscale Method</MudText>
+                <MudSelect T="UpscaleType"
+                           @bind-Value="_selectedType"
+                           Variant="Variant.Outlined"
+                           AnchorOrigin="Origin.BottomCenter">
+                    <MudSelectItem Value="UpscaleType.Rife">
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                            <MudIcon Icon="@Icons.Material.Filled.Speed" Size="Size.Small" />
+                            <span>RIFE - Frame Interpolation</span>
+                        </MudStack>
+                    </MudSelectItem>
+                    <MudSelectItem Value="UpscaleType.RealCugan">
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                            <MudIcon Icon="@Icons.Material.Filled.Animation" Size="Size.Small" />
+                            <span>Real-CUGAN - Anime/Cartoon Upscaling</span>
+                        </MudStack>
+                    </MudSelectItem>
+                    <MudSelectItem Value="UpscaleType.RealEsrgan">
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                            <MudIcon Icon="@Icons.Material.Filled.Photo" Size="Size.Small" />
+                            <span>Real-ESRGAN - General Upscaling</span>
+                        </MudStack>
+                    </MudSelectItem>
+                    <MudSelectItem Value="UpscaleType.NonAi">
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                            <MudIcon Icon="@Icons.Material.Filled.Tune" Size="Size.Small" />
+                            <span>Non-AI - Traditional Upscaling</span>
+                        </MudStack>
+                    </MudSelectItem>
+                </MudSelect>
+            </MudStack>
+
+            <!-- Type-Specific Settings -->
+            <MudPaper Elevation="0" Class="pa-3" Style="background-color: var(--mud-palette-background-gray);">
+                @switch (_selectedType)
+                {
+                    case UpscaleType.Rife:
+                        <RifeSettingsPanel @bind-Settings="_rifeSettings" />
+                        break;
+                    case UpscaleType.RealCugan:
+                        <RealCuganSettingsPanel @bind-Settings="_realCuganSettings" />
+                        break;
+                    case UpscaleType.RealEsrgan:
+                        <RealEsrganSettingsPanel @bind-Settings="_realEsrganSettings" />
+                        break;
+                    case UpscaleType.NonAi:
+                        <NonAiSettingsPanel @bind-Settings="_nonAiSettings" />
+                        break;
+                }
+            </MudPaper>
+
+            <!-- Output Path -->
+            <MudStack Spacing="1">
+                <MudText Typo="Typo.subtitle2">Output</MudText>
+                <MudStack Row="true" Spacing="2">
+                    <MudTextField @bind-Value="_outputPath"
+                                  Placeholder="Output file path..."
+                                  Variant="Variant.Outlined"
+                                  Adornment="Adornment.Start"
+                                  AdornmentIcon="@Icons.Material.Filled.Save"
+                                  Style="flex-grow: 1;" />
+                    <MudButton Variant="Variant.Outlined"
+                               Color="Color.Default"
+                               StartIcon="@Icons.Material.Filled.FolderOpen"
+                               OnClick="@BrowseOutputPath">
+                        Browse
+                    </MudButton>
+                </MudStack>
+            </MudStack>
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel" Color="Color.Default">Cancel</MudButton>
+        <MudButton OnClick="Submit"
+                   Color="Color.Primary"
+                   Variant="Variant.Filled"
+                   Disabled="@(!IsValid)"
+                   StartIcon="@Icons.Material.Filled.Add">
+            Add to Queue
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; } = null!;
+
+    private string _sourcePath = string.Empty;
+    private string _outputPath = string.Empty;
+    private UpscaleType _selectedType = UpscaleType.Rife;
+
+    // Settings for each type
+    private RifeJobSettings _rifeSettings = new();
+    private RealCuganJobSettings _realCuganSettings = new();
+    private RealEsrganJobSettings _realEsrganSettings = new();
+    private NonAiJobSettings _nonAiSettings = new();
+
+    private bool IsValid => !string.IsNullOrWhiteSpace(_sourcePath) &&
+                            !string.IsNullOrWhiteSpace(_outputPath) &&
+                            File.Exists(_sourcePath);
+
+    private async Task BrowseSourceFile()
+    {
+        var options = new FileDialogOptions
+        {
+            Title = "Select Video File",
+            Filters =
+            [
+                new FileFilter { Name = "Video Files", Extensions = ["mp4", "mkv", "avi", "mov", "webm", "wmv", "flv"] },
+                new FileFilter { Name = "All Files", Extensions = ["*"] }
+            ]
+        };
+
+        var result = await DesktopInterop.OpenFileDialogAsync(options);
+        if (!string.IsNullOrEmpty(result))
+        {
+            _sourcePath = result;
+            GenerateOutputPath();
+        }
+    }
+
+    private async Task BrowseOutputPath()
+    {
+        var options = new FileDialogOptions
+        {
+            Title = "Save Output As",
+            DefaultFileName = Path.GetFileName(_outputPath),
+            Filters =
+            [
+                new FileFilter { Name = "MP4 Video", Extensions = ["mp4"] },
+                new FileFilter { Name = "MKV Video", Extensions = ["mkv"] },
+                new FileFilter { Name = "All Files", Extensions = ["*"] }
+            ]
+        };
+
+        var result = await DesktopInterop.SaveFileDialogAsync(options);
+        if (!string.IsNullOrEmpty(result))
+        {
+            _outputPath = result;
+        }
+    }
+
+    private void GenerateOutputPath()
+    {
+        if (string.IsNullOrEmpty(_sourcePath)) return;
+
+        var directory = Path.GetDirectoryName(_sourcePath) ?? "";
+        var fileName = Path.GetFileNameWithoutExtension(_sourcePath);
+        var extension = Path.GetExtension(_sourcePath);
+
+        var suffix = _selectedType switch
+        {
+            UpscaleType.Rife => $"_rife{_rifeSettings.Multiplier}x",
+            UpscaleType.RealCugan => $"_cugan{_realCuganSettings.Scale}x",
+            UpscaleType.RealEsrgan => $"_esrgan{_realEsrganSettings.Scale}x",
+            UpscaleType.NonAi => $"_{_nonAiSettings.Algorithm.ToLower()}{_nonAiSettings.Scale}x",
+            _ => "_upscaled"
+        };
+
+        _outputPath = Path.Combine(directory, $"{fileName}{suffix}{extension}");
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+
+    private void Submit()
+    {
+        if (!IsValid)
+        {
+            Snackbar.Add("Please select a valid source video", Severity.Warning);
+            return;
+        }
+
+        var job = new UpscaleJob
+        {
+            SourceVideoPath = _sourcePath,
+            OutputPath = _outputPath,
+            UpscaleType = _selectedType,
+            SettingsJson = GetSettingsJson()
+        };
+
+        MudDialog.Close(DialogResult.Ok(job));
+    }
+
+    private string GetSettingsJson()
+    {
+        object settings = _selectedType switch
+        {
+            UpscaleType.Rife => _rifeSettings,
+            UpscaleType.RealCugan => _realCuganSettings,
+            UpscaleType.RealEsrgan => _realEsrganSettings,
+            UpscaleType.NonAi => _nonAiSettings,
+            _ => new { }
+        };
+
+        return System.Text.Json.JsonSerializer.Serialize(settings);
+    }
+
+    // Settings models for each type
+    public class RifeJobSettings
+    {
+        public int Multiplier { get; set; } = 2;
+        public int TargetFps { get; set; } = 60;
+        public string QualityPreset { get; set; } = "Medium";
+    }
+
+    public class RealCuganJobSettings
+    {
+        public int NoiseLevel { get; set; } = -1;
+        public int Scale { get; set; } = 2;
+        public bool UseFp16 { get; set; } = true;
+    }
+
+    public class RealEsrganJobSettings
+    {
+        public string Model { get; set; } = "RealESRGAN_x4plus";
+        public int Scale { get; set; } = 4;
+        public int TileSize { get; set; } = 512;
+        public bool UseFp16 { get; set; } = true;
+    }
+
+    public class NonAiJobSettings
+    {
+        public string Algorithm { get; set; } = "Lanczos";
+        public int Scale { get; set; } = 2;
+    }
+}

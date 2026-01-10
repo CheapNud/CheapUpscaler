@@ -1,6 +1,8 @@
 @page "/upscale-queue"
 @using CheapUpscaler.Blazor.Components.Shared
+@using CheapUpscaler.Blazor.Models
 @inject IUpscaleQueueService QueueService
+@inject IDialogService DialogService
 @inject ISnackbar Snackbar
 @implements IDisposable
 
@@ -53,6 +55,13 @@
                         Pause Queue
                     </MudButton>
                 }
+                <MudButton Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           StartIcon="@Icons.Material.Filled.Add"
+                           OnClick="@OpenAddJobDialog"
+                           Disabled="@_isLoading">
+                    Add Job
+                </MudButton>
                 @if (_stats != null)
                 {
                     <MudChip T="string" Color="Color.Info" Size="Size.Small">
@@ -212,6 +221,27 @@ else
     private void StopQueue()
     {
         QueueService.StopQueue();
+    }
+
+    private async Task OpenAddJobDialog()
+    {
+        var options = new DialogOptions
+        {
+            MaxWidth = MaxWidth.Medium,
+            FullWidth = true,
+            CloseOnEscapeKey = true
+        };
+
+        var dialog = await DialogService.ShowAsync<AddUpscaleJobDialog>("Add Upscale Job", options);
+        var result = await dialog.Result;
+
+        if (result is { Canceled: false, Data: UpscaleJob job })
+        {
+            await QueueService.AddJobAsync(job);
+            await LoadJobsAsync();
+            await InvokeAsync(StateHasChanged);
+            Snackbar.Add($"Job added: {Path.GetFileName(job.SourceVideoPath)}", Severity.Success);
+        }
     }
 
     private async Task HandlePause(Guid jobId)

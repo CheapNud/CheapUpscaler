@@ -78,12 +78,18 @@ AI video upscaling and frame interpolation. Takes rendered video output (from Ch
 - [ ] Create `UpscaleJobRepository`
 - [ ] Integrate with actual upscaling services (currently simulated)
 
-### Add Upscale Job Dialog - TODO
-- [ ] AddUpscaleJobDialog.razor
-- [ ] Video file picker (via IDesktopInteropService)
-- [ ] Upscale type selector (RIFE/RealCUGAN/RealESRGAN/NonAI)
-- [ ] Type-specific settings panels
-- [ ] Output path with auto-naming
+### Add Upscale Job Dialog - COMPLETE
+- [x] AddUpscaleJobDialog.razor with MudDialog
+- [x] Video file picker (via IDesktopInteropService)
+- [x] Upscale type selector (RIFE/RealCUGAN/RealESRGAN/NonAI)
+- [x] Type-specific settings panels:
+  - [x] RifeSettingsPanel.razor (multiplier, target FPS, quality preset)
+  - [x] RealCuganSettingsPanel.razor (scale, noise level, FP16)
+  - [x] RealEsrganSettingsPanel.razor (model, scale, tile size, FP16)
+  - [x] NonAiSettingsPanel.razor (algorithm, scale)
+- [x] Output path with auto-naming (suffix based on type/settings)
+- [x] Integration with Home page (New Job button)
+- [x] Integration with Queue page (Add Job button)
 
 ### Video Source Selection - TODO
 - [ ] Display source video info (resolution, duration, frame rate, codec)

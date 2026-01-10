@@ -1,0 +1,52 @@
+@using static CheapUpscaler.Blazor.Components.Shared.AddUpscaleJobDialog
+
+<MudStack Spacing="3">
+    <MudText Typo="Typo.subtitle2" Color="Color.Primary">Real-CUGAN Settings (Anime/Cartoon)</MudText>
+
+    <MudSelect T="int"
+               Value="Settings.Scale"
+               ValueChanged="@(v => UpdateSettings(s => s.Scale = v))"
+               Label="Scale Factor"
+               Variant="Variant.Outlined"
+               HelperText="Output resolution multiplier">
+        <MudSelectItem Value="2">2x</MudSelectItem>
+        <MudSelectItem Value="3">3x</MudSelectItem>
+        <MudSelectItem Value="4">4x</MudSelectItem>
+    </MudSelect>
+
+    <MudSelect T="int"
+               Value="Settings.NoiseLevel"
+               ValueChanged="@(v => UpdateSettings(s => s.NoiseLevel = v))"
+               Label="Noise Reduction Level"
+               Variant="Variant.Outlined"
+               HelperText="Higher = more denoising (-1 = conservative)">
+        <MudSelectItem Value="-1">-1 (Conservative/No denoise)</MudSelectItem>
+        <MudSelectItem Value="0">0 (Light)</MudSelectItem>
+        <MudSelectItem Value="1">1 (Moderate)</MudSelectItem>
+        <MudSelectItem Value="2">2 (Strong)</MudSelectItem>
+        <MudSelectItem Value="3">3 (Maximum)</MudSelectItem>
+    </MudSelect>
+
+    <MudSwitch T="bool"
+               Value="Settings.UseFp16"
+               ValueChanged="@(v => UpdateSettings(s => s.UseFp16 = v))"
+               Label="Use FP16 (Half Precision)"
+               Color="Color.Primary" />
+    <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-n2">
+        FP16 uses less VRAM and is faster on modern GPUs
+    </MudText>
+</MudStack>
+
+@code {
+    [Parameter]
+    public RealCuganJobSettings Settings { get; set; } = new();
+
+    [Parameter]
+    public EventCallback<RealCuganJobSettings> SettingsChanged { get; set; }
+
+    private async Task UpdateSettings(Action<RealCuganJobSettings> update)
+    {
+        update(Settings);
+        await SettingsChanged.InvokeAsync(Settings);
+    }
+}
