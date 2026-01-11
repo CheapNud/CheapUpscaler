@@ -1,0 +1,50 @@
+@using static CheapUpscaler.Blazor.Components.Shared.AddUpscaleJobDialog
+
+<MudStack Spacing="3">
+    <MudText Typo="Typo.subtitle2" Color="Color.Primary">RIFE Frame Interpolation Settings</MudText>
+
+    <MudSelect T="int"
+               Value="Settings.Multiplier"
+               ValueChanged="@(v => UpdateSettings(s => s.Multiplier = v))"
+               Label="Frame Multiplier"
+               Variant="Variant.Outlined"
+               HelperText="Multiply frame rate by this factor">
+        <MudSelectItem Value="2">2x (e.g., 30fps → 60fps)</MudSelectItem>
+        <MudSelectItem Value="4">4x (e.g., 30fps → 120fps)</MudSelectItem>
+        <MudSelectItem Value="8">8x (e.g., 30fps → 240fps)</MudSelectItem>
+    </MudSelect>
+
+    <MudNumericField T="int"
+                     Value="Settings.TargetFps"
+                     ValueChanged="@(v => UpdateSettings(s => s.TargetFps = v))"
+                     Label="Target FPS (Optional)"
+                     Variant="Variant.Outlined"
+                     Min="24"
+                     Max="240"
+                     HelperText="Override output FPS (0 = use multiplier)" />
+
+    <MudSelect T="string"
+               Value="Settings.QualityPreset"
+               ValueChanged="@(v => UpdateSettings(s => s.QualityPreset = v))"
+               Label="Quality Preset"
+               Variant="Variant.Outlined"
+               HelperText="Higher quality = slower processing">
+        <MudSelectItem Value="@("Fast")">Fast (lower quality)</MudSelectItem>
+        <MudSelectItem Value="@("Medium")">Medium (balanced)</MudSelectItem>
+        <MudSelectItem Value="@("High")">High (best quality)</MudSelectItem>
+    </MudSelect>
+</MudStack>
+
+@code {
+    [Parameter]
+    public RifeJobSettings Settings { get; set; } = new();
+
+    [Parameter]
+    public EventCallback<RifeJobSettings> SettingsChanged { get; set; }
+
+    private async Task UpdateSettings(Action<RifeJobSettings> update)
+    {
+        update(Settings);
+        await SettingsChanged.InvokeAsync(Settings);
+    }
+}

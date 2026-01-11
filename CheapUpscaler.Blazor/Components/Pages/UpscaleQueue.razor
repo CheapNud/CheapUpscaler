@@ -1,0 +1,342 @@
+@page "/upscale-queue"
+@using CheapUpscaler.Blazor.Components.Shared
+@using CheapUpscaler.Blazor.Models
+@inject IUpscaleQueueService QueueService
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+@implements IDisposable
+
+<PageTitle>Upscale Queue - CheapUpscaler</PageTitle>
+
+<MudText Typo="Typo.h4" GutterBottom="true">Upscale Queue</MudText>
+
+<!-- Queue Status & Controls -->
+<MudPaper Class="pa-4 mb-4">
+    <MudGrid>
+        <MudItem xs="12" sm="6">
+            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                @if (_isQueuePaused)
+                {
+                    <MudIcon Icon="@Icons.Material.Filled.PauseCircle" Color="Color.Warning" Size="Size.Large" />
+                    <MudStack Spacing="0">
+                        <MudText Typo="Typo.h6" Color="Color.Warning">Queue PAUSED</MudText>
+                        <MudText Typo="Typo.caption">Jobs will not start processing until queue is started</MudText>
+                    </MudStack>
+                }
+                else
+                {
+                    <MudIcon Icon="@Icons.Material.Filled.PlayCircle" Color="Color.Success" Size="Size.Large" />
+                    <MudStack Spacing="0">
+                        <MudText Typo="Typo.h6" Color="Color.Success">Queue RUNNING</MudText>
+                        <MudText Typo="Typo.caption">Jobs will start processing automatically</MudText>
+                    </MudStack>
+                }
+            </MudStack>
+        </MudItem>
+        <MudItem xs="12" sm="6">
+            <MudStack Row="true" Justify="Justify.FlexEnd" AlignItems="AlignItems.Center" Spacing="2">
+                @if (_isQueuePaused)
+                {
+                    <MudButton Variant="Variant.Filled"
+                               Color="Color.Success"
+                               StartIcon="@Icons.Material.Filled.PlayArrow"
+                               OnClick="@StartQueue"
+                               Disabled="@_isLoading">
+                        Start Queue
+                    </MudButton>
+                }
+                else
+                {
+                    <MudButton Variant="Variant.Filled"
+                               Color="Color.Warning"
+                               StartIcon="@Icons.Material.Filled.Pause"
+                               OnClick="@StopQueue"
+                               Disabled="@_isLoading">
+                        Pause Queue
+                    </MudButton>
+                }
+                <MudButton Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           StartIcon="@Icons.Material.Filled.Add"
+                           OnClick="@OpenAddJobDialog"
+                           Disabled="@_isLoading">
+                    Add Job
+                </MudButton>
+                @if (_stats != null)
+                {
+                    <MudChip T="string" Color="Color.Info" Size="Size.Small">
+                        @_stats.PendingCount pending
+                    </MudChip>
+                    @if (_stats.RunningCount > 0)
+                    {
+                        <MudChip T="string" Color="Color.Primary" Size="Size.Small">
+                            @_stats.RunningCount running
+                        </MudChip>
+                    }
+                }
+            </MudStack>
+        </MudItem>
+    </MudGrid>
+</MudPaper>
+
+<!-- Tabbed Job Lists -->
+@if (_isLoading)
+{
+    <MudProgressLinear Indeterminate="true" Color="Color.Primary" Class="mb-4" />
+    <MudStack Spacing="2">
+        <MudSkeleton SkeletonType="SkeletonType.Rectangle" Height="100px" />
+        <MudSkeleton SkeletonType="SkeletonType.Rectangle" Height="100px" />
+    </MudStack>
+}
+else
+{
+    <MudTabs Elevation="2" Rounded="true" ApplyEffectsToContainer="true" PanelClass="pa-4">
+        <MudTabPanel Text="Active"
+                     Icon="@Icons.Material.Filled.PlayArrow"
+                     BadgeData="@(_activeJobs.Count > 0 ? _activeJobs.Count : null)"
+                     BadgeColor="Color.Primary">
+            @if (_activeJobs.Count == 0)
+            {
+                <MudStack AlignItems="AlignItems.Center" Spacing="4" Class="py-8">
+                    <MudIcon Icon="@Icons.Material.Filled.Inbox" Size="Size.Large" Color="Color.Default" />
+                    <MudText Typo="Typo.h6" Color="Color.Secondary">No active jobs</MudText>
+                    <MudText Typo="Typo.body2" Color="Color.Secondary">
+                        Add a video to start upscaling
+                    </MudText>
+                </MudStack>
+            }
+            else
+            {
+                <MudStack Spacing="2">
+                    @foreach (var job in _activeJobs)
+                    {
+                        <UpscaleJobCard Job="@job"
+                                        OnPause="@HandlePause"
+                                        OnResume="@HandleResume"
+                                        OnCancel="@HandleCancel"
+                                        OnRetry="@HandleRetry"
+                                        OnDelete="@HandleDelete" />
+                    }
+                </MudStack>
+            }
+        </MudTabPanel>
+
+        <MudTabPanel Text="Completed"
+                     Icon="@Icons.Material.Filled.CheckCircle"
+                     BadgeData="@(_completedJobs.Count > 0 ? _completedJobs.Count : null)"
+                     BadgeColor="Color.Success">
+            @if (_completedJobs.Count == 0)
+            {
+                <MudStack AlignItems="AlignItems.Center" Spacing="4" Class="py-8">
+                    <MudIcon Icon="@Icons.Material.Filled.CheckCircleOutline" Size="Size.Large" Color="Color.Default" />
+                    <MudText Typo="Typo.h6" Color="Color.Secondary">No completed jobs</MudText>
+                </MudStack>
+            }
+            else
+            {
+                <MudStack Spacing="2">
+                    @foreach (var job in _completedJobs)
+                    {
+                        <UpscaleJobCard Job="@job"
+                                        OnDelete="@HandleDelete" />
+                    }
+                </MudStack>
+            }
+        </MudTabPanel>
+
+        <MudTabPanel Text="Failed"
+                     Icon="@Icons.Material.Filled.Error"
+                     BadgeData="@(_failedJobs.Count > 0 ? _failedJobs.Count : null)"
+                     BadgeColor="Color.Error">
+            @if (_failedJobs.Count == 0)
+            {
+                <MudStack AlignItems="AlignItems.Center" Spacing="4" Class="py-8">
+                    <MudIcon Icon="@Icons.Material.Filled.ThumbUp" Size="Size.Large" Color="Color.Success" />
+                    <MudText Typo="Typo.h6" Color="Color.Secondary">No failed jobs</MudText>
+                </MudStack>
+            }
+            else
+            {
+                <MudStack Spacing="2">
+                    @foreach (var job in _failedJobs)
+                    {
+                        <UpscaleJobCard Job="@job"
+                                        OnRetry="@HandleRetry"
+                                        OnDelete="@HandleDelete" />
+                    }
+                </MudStack>
+            }
+        </MudTabPanel>
+    </MudTabs>
+}
+
+@code {
+    private List<UpscaleJob> _activeJobs = [];
+    private List<UpscaleJob> _completedJobs = [];
+    private List<UpscaleJob> _failedJobs = [];
+    private QueueStatistics? _stats;
+    private bool _isLoading = true;
+    private bool _isQueuePaused = true;
+    private DateTime _lastProgressUpdate = DateTime.MinValue;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Subscribe to events
+        QueueService.ProgressChanged += OnProgressChanged;
+        QueueService.StatusChanged += OnStatusChanged;
+        QueueService.QueueStatusChanged += OnQueueStatusChanged;
+
+        _isQueuePaused = QueueService.IsQueuePaused;
+        await LoadJobsAsync();
+        _isLoading = false;
+    }
+
+    private async Task LoadJobsAsync()
+    {
+        try
+        {
+            var activeTask = QueueService.GetActiveJobsAsync();
+            var completedTask = QueueService.GetCompletedJobsAsync();
+            var failedTask = QueueService.GetFailedJobsAsync();
+            var statsTask = QueueService.GetQueueStatisticsAsync();
+
+            await Task.WhenAll(activeTask, completedTask, failedTask, statsTask);
+
+            _activeJobs = (await activeTask).ToList();
+            _completedJobs = (await completedTask).ToList();
+            _failedJobs = (await failedTask).ToList();
+            _stats = await statsTask;
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading jobs: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private void StartQueue()
+    {
+        QueueService.StartQueue();
+    }
+
+    private void StopQueue()
+    {
+        QueueService.StopQueue();
+    }
+
+    private async Task OpenAddJobDialog()
+    {
+        var options = new DialogOptions
+        {
+            MaxWidth = MaxWidth.Medium,
+            FullWidth = true,
+            CloseOnEscapeKey = true
+        };
+
+        var dialog = await DialogService.ShowAsync<AddUpscaleJobDialog>("Add Upscale Job", options);
+        var result = await dialog.Result;
+
+        if (result is { Canceled: false, Data: UpscaleJob job })
+        {
+            await QueueService.AddJobAsync(job);
+            await LoadJobsAsync();
+            await InvokeAsync(StateHasChanged);
+            Snackbar.Add($"Job added: {Path.GetFileName(job.SourceVideoPath)}", Severity.Success);
+        }
+    }
+
+    private async Task HandlePause(Guid jobId)
+    {
+        if (await QueueService.PauseJobAsync(jobId))
+            Snackbar.Add("Job paused", Severity.Info);
+    }
+
+    private async Task HandleResume(Guid jobId)
+    {
+        if (await QueueService.ResumeJobAsync(jobId))
+            Snackbar.Add("Job resumed", Severity.Info);
+    }
+
+    private async Task HandleCancel(Guid jobId)
+    {
+        if (await QueueService.CancelJobAsync(jobId))
+            Snackbar.Add("Job cancelled", Severity.Warning);
+    }
+
+    private async Task HandleRetry(Guid jobId)
+    {
+        if (await QueueService.RetryJobAsync(jobId))
+            Snackbar.Add("Job queued for retry", Severity.Info);
+    }
+
+    private async Task HandleDelete(Guid jobId)
+    {
+        if (await QueueService.DeleteJobAsync(jobId))
+        {
+            await LoadJobsAsync();
+            Snackbar.Add("Job deleted", Severity.Info);
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async void OnProgressChanged(object? sender, UpscaleProgressEventArgs e)
+    {
+        // Throttle UI updates to 100ms
+        var now = DateTime.UtcNow;
+        if ((now - _lastProgressUpdate).TotalMilliseconds < 100)
+            return;
+
+        _lastProgressUpdate = now;
+
+        await InvokeAsync(() =>
+        {
+            var job = _activeJobs.FirstOrDefault(j => j.JobId == e.JobId);
+            if (job != null)
+            {
+                job.ProgressPercentage = e.ProgressPercentage;
+                job.CurrentFrame = e.CurrentFrame;
+                job.TotalFrames = e.TotalFrames;
+                job.EstimatedTimeRemaining = e.EstimatedTimeRemaining;
+                StateHasChanged();
+            }
+        });
+    }
+
+    private async void OnStatusChanged(object? sender, UpscaleProgressEventArgs e)
+    {
+        await InvokeAsync(async () =>
+        {
+            await LoadJobsAsync();
+            StateHasChanged();
+
+            var message = e.Status switch
+            {
+                UpscaleJobStatus.Completed => "Job completed successfully!",
+                UpscaleJobStatus.Failed => $"Job failed: {e.ErrorMessage}",
+                UpscaleJobStatus.Cancelled => "Job cancelled",
+                _ => null
+            };
+
+            if (message != null)
+            {
+                var severity = e.Status == UpscaleJobStatus.Completed ? Severity.Success : Severity.Warning;
+                Snackbar.Add(message, severity);
+            }
+        });
+    }
+
+    private async void OnQueueStatusChanged(object? sender, bool isPaused)
+    {
+        await InvokeAsync(() =>
+        {
+            _isQueuePaused = isPaused;
+            StateHasChanged();
+        });
+    }
+
+    public void Dispose()
+    {
+        QueueService.ProgressChanged -= OnProgressChanged;
+        QueueService.StatusChanged -= OnStatusChanged;
+        QueueService.QueueStatusChanged -= OnQueueStatusChanged;
+    }
+}

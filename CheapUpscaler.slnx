@@ -1,3 +1,4 @@
 <Solution>
   <Project Path="CheapUpscaler.Blazor/CheapUpscaler.Blazor.csproj" />
+  <Project Path="CheapUpscaler.Core/CheapUpscaler.Core.csproj" />
 </Solution>

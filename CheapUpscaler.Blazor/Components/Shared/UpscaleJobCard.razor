@@ -1,0 +1,258 @@
+@using CheapUpscaler.Blazor.Models
+
+<MudCard Elevation="2" Class="mb-2">
+    <MudCardContent Class="pa-3">
+        <MudGrid Spacing="2">
+            <!-- Status Icon & File Info -->
+            <MudItem xs="12" sm="8">
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                    <MudIcon Icon="@GetStatusIcon()" Color="@GetStatusColor()" Size="Size.Medium" />
+                    <MudStack Spacing="0">
+                        <MudText Typo="Typo.subtitle1" Style="font-weight: 500;">
+                            @Path.GetFileName(Job.SourceVideoPath)
+                        </MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">
+                            @GetUpscaleTypeDisplay() • @GetStatusDisplay()
+                        </MudText>
+                    </MudStack>
+                </MudStack>
+            </MudItem>
+
+            <!-- Action Buttons -->
+            <MudItem xs="12" sm="4">
+                <MudStack Row="true" Justify="Justify.FlexEnd" Spacing="1">
+                    @if (Job.Status == UpscaleJobStatus.Running)
+                    {
+                        <MudTooltip Text="Pause">
+                            <MudIconButton Icon="@Icons.Material.Filled.Pause"
+                                           Color="Color.Warning"
+                                           Size="Size.Small"
+                                           OnClick="@(() => OnPause.InvokeAsync(Job.JobId))" />
+                        </MudTooltip>
+                        <MudTooltip Text="Cancel">
+                            <MudIconButton Icon="@Icons.Material.Filled.Cancel"
+                                           Color="Color.Error"
+                                           Size="Size.Small"
+                                           OnClick="@(() => OnCancel.InvokeAsync(Job.JobId))" />
+                        </MudTooltip>
+                    }
+                    else if (Job.Status == UpscaleJobStatus.Paused)
+                    {
+                        <MudTooltip Text="Resume">
+                            <MudIconButton Icon="@Icons.Material.Filled.PlayArrow"
+                                           Color="Color.Success"
+                                           Size="Size.Small"
+                                           OnClick="@(() => OnResume.InvokeAsync(Job.JobId))" />
+                        </MudTooltip>
+                        <MudTooltip Text="Cancel">
+                            <MudIconButton Icon="@Icons.Material.Filled.Cancel"
+                                           Color="Color.Error"
+                                           Size="Size.Small"
+                                           OnClick="@(() => OnCancel.InvokeAsync(Job.JobId))" />
+                        </MudTooltip>
+                    }
+                    else if (Job.Status == UpscaleJobStatus.Pending)
+                    {
+                        <MudTooltip Text="Cancel">
+                            <MudIconButton Icon="@Icons.Material.Filled.Cancel"
+                                           Color="Color.Error"
+                                           Size="Size.Small"
+                                           OnClick="@(() => OnCancel.InvokeAsync(Job.JobId))" />
+                        </MudTooltip>
+                    }
+                    else if (Job.Status == UpscaleJobStatus.Failed || Job.Status == UpscaleJobStatus.Cancelled)
+                    {
+                        <MudTooltip Text="Retry">
+                            <MudIconButton Icon="@Icons.Material.Filled.Refresh"
+                                           Color="Color.Primary"
+                                           Size="Size.Small"
+                                           OnClick="@(() => OnRetry.InvokeAsync(Job.JobId))" />
+                        </MudTooltip>
+                        <MudTooltip Text="Delete">
+                            <MudIconButton Icon="@Icons.Material.Filled.Delete"
+                                           Color="Color.Error"
+                                           Size="Size.Small"
+                                           OnClick="@(() => OnDelete.InvokeAsync(Job.JobId))" />
+                        </MudTooltip>
+                    }
+                    else if (Job.Status == UpscaleJobStatus.Completed)
+                    {
+                        <MudTooltip Text="Open Output Folder">
+                            <MudIconButton Icon="@Icons.Material.Filled.FolderOpen"
+                                           Color="Color.Primary"
+                                           Size="Size.Small"
+                                           OnClick="@OpenOutputFolder" />
+                        </MudTooltip>
+                        <MudTooltip Text="Delete from History">
+                            <MudIconButton Icon="@Icons.Material.Filled.Delete"
+                                           Color="Color.Default"
+                                           Size="Size.Small"
+                                           OnClick="@(() => OnDelete.InvokeAsync(Job.JobId))" />
+                        </MudTooltip>
+                    }
+                </MudStack>
+            </MudItem>
+
+            <!-- Progress Bar (only for running/paused jobs) -->
+            @if (Job.Status == UpscaleJobStatus.Running || Job.Status == UpscaleJobStatus.Paused)
+            {
+                <MudItem xs="12">
+                    <MudStack Spacing="1">
+                        <MudProgressLinear Value="@Job.ProgressPercentage"
+                                           Color="@(Job.Status == UpscaleJobStatus.Paused ? Color.Warning : Color.Primary)"
+                                           Striped="@(Job.Status == UpscaleJobStatus.Paused)"
+                                           Size="Size.Medium"
+                                           Rounded="true" />
+                        <MudStack Row="true" Justify="Justify.SpaceBetween">
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                @if (Job.TotalFrames.HasValue && Job.TotalFrames > 0)
+                                {
+                                    @($"Frame {Job.CurrentFrame:N0} / {Job.TotalFrames:N0}")
+                                }
+                                else
+                                {
+                                    @($"{Job.ProgressPercentage:F1}%")
+                                }
+                            </MudText>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                @if (Job.EstimatedTimeRemaining.HasValue)
+                                {
+                                    @FormatTimeRemaining(Job.EstimatedTimeRemaining.Value)
+                                }
+                            </MudText>
+                        </MudStack>
+                    </MudStack>
+                </MudItem>
+            }
+
+            <!-- Error Message (only for failed jobs) -->
+            @if (Job.Status == UpscaleJobStatus.Failed && !string.IsNullOrEmpty(Job.LastError))
+            {
+                <MudItem xs="12">
+                    <MudAlert Severity="Severity.Error" Dense="true" Class="mt-1">
+                        @Job.LastError
+                    </MudAlert>
+                </MudItem>
+            }
+
+            <!-- Completion Info (only for completed jobs) -->
+            @if (Job.Status == UpscaleJobStatus.Completed && Job.CompletedAt.HasValue)
+            {
+                <MudItem xs="12">
+                    <MudText Typo="Typo.caption" Color="Color.Success">
+                        Completed @FormatCompletedTime(Job.CompletedAt.Value)
+                        @if (Job.StartedAt.HasValue)
+                        {
+                            var duration = Job.CompletedAt.Value - Job.StartedAt.Value;
+                            @($" • Duration: {FormatDuration(duration)}")
+                        }
+                    </MudText>
+                </MudItem>
+            }
+        </MudGrid>
+    </MudCardContent>
+</MudCard>
+
+@code {
+    [Parameter, EditorRequired]
+    public UpscaleJob Job { get; set; } = null!;
+
+    [Parameter]
+    public EventCallback<Guid> OnPause { get; set; }
+
+    [Parameter]
+    public EventCallback<Guid> OnResume { get; set; }
+
+    [Parameter]
+    public EventCallback<Guid> OnCancel { get; set; }
+
+    [Parameter]
+    public EventCallback<Guid> OnRetry { get; set; }
+
+    [Parameter]
+    public EventCallback<Guid> OnDelete { get; set; }
+
+    private string GetStatusIcon() => Job.Status switch
+    {
+        UpscaleJobStatus.Pending => Icons.Material.Filled.Schedule,
+        UpscaleJobStatus.Running => Icons.Material.Filled.PlayCircle,
+        UpscaleJobStatus.Paused => Icons.Material.Filled.PauseCircle,
+        UpscaleJobStatus.Completed => Icons.Material.Filled.CheckCircle,
+        UpscaleJobStatus.Failed => Icons.Material.Filled.Error,
+        UpscaleJobStatus.Cancelled => Icons.Material.Filled.Cancel,
+        _ => Icons.Material.Filled.HelpOutline
+    };
+
+    private Color GetStatusColor() => Job.Status switch
+    {
+        UpscaleJobStatus.Pending => Color.Info,
+        UpscaleJobStatus.Running => Color.Primary,
+        UpscaleJobStatus.Paused => Color.Warning,
+        UpscaleJobStatus.Completed => Color.Success,
+        UpscaleJobStatus.Failed => Color.Error,
+        UpscaleJobStatus.Cancelled => Color.Default,
+        _ => Color.Default
+    };
+
+    private string GetStatusDisplay() => Job.Status switch
+    {
+        UpscaleJobStatus.Pending => "Waiting in queue",
+        UpscaleJobStatus.Running => "Processing",
+        UpscaleJobStatus.Paused => "Paused",
+        UpscaleJobStatus.Completed => "Completed",
+        UpscaleJobStatus.Failed => "Failed",
+        UpscaleJobStatus.Cancelled => "Cancelled",
+        _ => "Unknown"
+    };
+
+    private string GetUpscaleTypeDisplay() => Job.UpscaleType switch
+    {
+        UpscaleType.Rife => "RIFE Interpolation",
+        UpscaleType.RealCugan => "Real-CUGAN",
+        UpscaleType.RealEsrgan => "Real-ESRGAN",
+        UpscaleType.NonAi => "Non-AI Upscale",
+        _ => "Unknown"
+    };
+
+    private static string FormatTimeRemaining(TimeSpan time)
+    {
+        if (time.TotalHours >= 1)
+            return $"{(int)time.TotalHours}h {time.Minutes}m remaining";
+        if (time.TotalMinutes >= 1)
+            return $"{time.Minutes}m {time.Seconds}s remaining";
+        return $"{time.Seconds}s remaining";
+    }
+
+    private static string FormatCompletedTime(DateTime completedAt)
+    {
+        var elapsed = DateTime.UtcNow - completedAt;
+        if (elapsed.TotalMinutes < 1)
+            return "just now";
+        if (elapsed.TotalHours < 1)
+            return $"{(int)elapsed.TotalMinutes}m ago";
+        if (elapsed.TotalDays < 1)
+            return $"{(int)elapsed.TotalHours}h ago";
+        return completedAt.ToLocalTime().ToString("MMM d, h:mm tt");
+    }
+
+    private static string FormatDuration(TimeSpan duration)
+    {
+        if (duration.TotalHours >= 1)
+            return $"{(int)duration.TotalHours}h {duration.Minutes}m {duration.Seconds}s";
+        if (duration.TotalMinutes >= 1)
+            return $"{duration.Minutes}m {duration.Seconds}s";
+        return $"{duration.Seconds}s";
+    }
+
+    private void OpenOutputFolder()
+    {
+        if (!string.IsNullOrEmpty(Job.OutputPath))
+        {
+            var directory = Path.GetDirectoryName(Job.OutputPath);
+            if (!string.IsNullOrEmpty(directory) && Directory.Exists(directory))
+            {
+                System.Diagnostics.Process.Start("explorer.exe", directory);
+            }
+        }
+    }
+}
