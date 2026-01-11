@@ -15,8 +15,14 @@ namespace CheapUpscaler.Core.Services.RIFE;
 public class RifeInterpolationService
 {
     private readonly string _rifeFolderPath;
-    private readonly bool _isSvpRife;
     private readonly string _pythonPath;
+    private bool? _isSvpRife;
+    private bool _isValidated;
+
+    /// <summary>
+    /// Indicates whether RIFE is configured and available for use
+    /// </summary>
+    public bool IsConfigured => !string.IsNullOrEmpty(_rifeFolderPath) && Directory.Exists(_rifeFolderPath);
 
     public RifeInterpolationService(string rifeFolderPath = "", string pythonPath = "")
     {
@@ -41,10 +47,21 @@ public class RifeInterpolationService
             _pythonPath = pythonPath;
         }
 
-        // Detect if this is SVP's RIFE or a GitHub clone
-        _isSvpRife = DetectRifeType();
+        // Don't validate in constructor - defer until first use
+        // This allows DI to create the service even if RIFE isn't installed
+        if (!string.IsNullOrEmpty(_rifeFolderPath))
+        {
+            _isSvpRife = DetectRifeType();
+        }
+    }
 
-        ValidateFolderPath();
+    private bool IsSvpRife
+    {
+        get
+        {
+            _isSvpRife ??= DetectRifeType();
+            return _isSvpRife.Value;
+        }
     }
 
     /// <summary>
@@ -106,13 +123,16 @@ public class RifeInterpolationService
 
     /// <summary>
     /// Validate that RIFE folder exists and contains required files
+    /// Called lazily when service methods are invoked
     /// </summary>
-    private void ValidateFolderPath()
+    private void EnsureValidated()
     {
+        if (_isValidated) return;
+
         if (string.IsNullOrEmpty(_rifeFolderPath))
         {
             Debug.WriteLine("WARNING: RIFE folder path not configured");
-            throw new DirectoryNotFoundException("RIFE folder path not configured");
+            throw new InvalidOperationException("RIFE is not configured. Please install RIFE and configure the path in Settings.");
         }
 
         if (!Directory.Exists(_rifeFolderPath))
@@ -122,7 +142,7 @@ public class RifeInterpolationService
         }
 
         // Validate based on type
-        if (_isSvpRife)
+        if (IsSvpRife)
         {
             // Check for SVP RIFE files
             var requiredFiles = new[] { "rife.dll", "rife_vs.dll", "vsmirt.py", "vstrt.dll" };
@@ -144,6 +164,8 @@ public class RifeInterpolationService
                 throw new FileNotFoundException($"inference_video.py not found in: {_rifeFolderPath}");
             }
         }
+
+        _isValidated = true;
     }
 
     /// <summary>
@@ -157,6 +179,8 @@ public class RifeInterpolationService
         CancellationToken cancellationToken = default,
         string? ffmpegPath = null)
     {
+        EnsureValidated();
+
         if (!File.Exists(inputVideoPath))
             throw new FileNotFoundException($"Input video not found: {inputVideoPath}");
 
@@ -168,7 +192,7 @@ public class RifeInterpolationService
         string arguments;
         string pythonScript;
 
-        if (_isSvpRife)
+        if (IsSvpRife)
         {
             // SVP's RIFE uses VapourSynth integration
             Debug.WriteLine("Attempting SVP RIFE interpolation via VapourSynth...");
@@ -494,7 +518,7 @@ public class RifeInterpolationService
 
             var success = process.ExitCode == 0;
 
-            if (success && !_isSvpRife)
+            if (success && !IsSvpRife)
             {
                 if (!File.Exists(outputVideoPath))
                 {
@@ -941,7 +965,7 @@ clip.set_output()
     {
         try
         {
-            ValidateFolderPath();
+            EnsureValidated();
 
             var pythonCheck = new SysProcess
             {

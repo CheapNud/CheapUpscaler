@@ -105,29 +105,29 @@ AI video upscaling and frame interpolation. Takes rendered video output (from Ch
 - [x] VideoInfo model with formatted display properties
 - [ ] Preview thumbnail generation (optional future enhancement)
 
-### RIFE Interpolation Settings UI - TODO
-- [ ] Interpolation multiplier slider (2x, 4x, 8x)
-- [ ] Target FPS numeric input (30-240)
-- [ ] Quality preset selector (Draft/Medium/High)
-- [ ] RIFE variant selector (if multiple installed)
-- [ ] GPU selection dropdown
+### RIFE Interpolation Settings UI - COMPLETE
+- [x] Interpolation multiplier selector (2x, 4x, 8x)
+- [x] Target FPS numeric input (24-240)
+- [x] Quality preset selector (Fast/Medium/High)
+- [ ] RIFE variant selector (if multiple installed) - future enhancement
+- [ ] GPU selection dropdown - future enhancement
 
-### Real-CUGAN Settings UI - TODO
-- [ ] Noise reduction level selector (-1 to 3)
-- [ ] Scale factor selector (2x, 3x, 4x)
-- [ ] Backend selector (TensorRT/CUDA/CPU)
-- [ ] FP16 mode toggle
-- [ ] GPU device selector
+### Real-CUGAN Settings UI - COMPLETE
+- [x] Noise reduction level selector (-1 to 3)
+- [x] Scale factor selector (2x, 3x, 4x)
+- [x] FP16 mode toggle
+- [ ] Backend selector (TensorRT/CUDA/CPU) - future enhancement
+- [ ] GPU device selector - future enhancement
 
-### Real-ESRGAN Settings UI - TODO
-- [ ] Model selector (RealESRGAN_x4plus, anime_6B, x2plus, etc.)
-- [ ] Scale factor selector (2x, 4x)
-- [ ] Tile size input
-- [ ] FP16 mode toggle
+### Real-ESRGAN Settings UI - COMPLETE
+- [x] Model selector (RealESRGAN_x4plus, anime_6B, x2plus, etc.)
+- [x] Scale factor selector (2x, 4x)
+- [x] Tile size input
+- [x] FP16 mode toggle
 
-### Non-AI Upscaling Settings UI - TODO
-- [ ] Algorithm selector (Lanczos, xBR, HQx)
-- [ ] Scale factor selector (2x, 3x, 4x)
+### Non-AI Upscaling Settings UI - COMPLETE
+- [x] Algorithm selector (Lanczos, xBR, HQx, Bicubic)
+- [x] Scale factor selector (2x, 3x, 4x)
 
 ### Settings Page - COMPLETE
 - [x] AppSettings model (ToolPaths, DefaultUpscaleSettings, UiSettings, QueueSettings)
