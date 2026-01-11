@@ -26,11 +26,8 @@ Optional dependencies (the app detects what's installed):
 
 ## Build
 
-Requires [CheapHelpers](https://github.com/CheapNud/CheapHelpers) in a sibling directory.
-
 ```bash
 git clone https://github.com/CheapNud/CheapUpscaler.git
-git clone https://github.com/CheapNud/CheapHelpers.git
 cd CheapUpscaler
 dotnet run --project CheapUpscaler.Blazor
 ```

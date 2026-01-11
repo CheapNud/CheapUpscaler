@@ -11,15 +11,12 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- Media processing shared library -->
-    <ProjectReference Include="..\..\CheapHelpers\CheapHelpers.MediaProcessing\CheapHelpers.MediaProcessing.csproj" />
-  </ItemGroup>
-
-  <ItemGroup>
     <!-- DI extension -->
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.0" />
     <!-- FFmpeg integration -->
     <PackageReference Include="FFMpegCore" Version="5.4.0" />
+    <!-- Media processing shared library -->
+    <PackageReference Include="CheapHelpers.MediaProcessing" Version="1.2.0" />
   </ItemGroup>
 
 </Project>
