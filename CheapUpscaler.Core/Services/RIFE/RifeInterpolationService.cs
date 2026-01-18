@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 using CheapHelpers.MediaProcessing.Services.Utilities;
+using Microsoft.Extensions.Logging;
 
 namespace CheapUpscaler.Core.Services.RIFE;
 
@@ -16,6 +17,7 @@ public class RifeInterpolationService
 {
     private readonly string _rifeFolderPath;
     private readonly string _pythonPath;
+    private readonly ILogger<RifeInterpolationService>? _logger;
     private bool? _isSvpRife;
     private bool _isValidated;
 
@@ -56,6 +58,67 @@ public class RifeInterpolationService
     }
 
     /// <summary>
+    /// Auto-detect the best available engine based on installed model files.
+    /// Priority: TensorRT (ONNX) > NCNN (bin/param) > Vulkan
+    /// </summary>
+    public RifeEngine AutoSelectEngine()
+    {
+        if (!IsConfigured)
+            return RifeEngine.TensorRT; // Default, will fail at runtime with helpful error
+
+        var rifeModelDir = Path.Combine(_rifeFolderPath, "models", "rife");
+        if (!Directory.Exists(rifeModelDir))
+            return RifeEngine.TensorRT;
+
+        // Check for ONNX files (TensorRT)
+        var hasOnnx = Directory.GetFiles(rifeModelDir, "*.onnx").Length > 0;
+        if (hasOnnx)
+        {
+            _logger?.LogDebug("[RIFE] ONNX models found, selecting TensorRT engine");
+            return RifeEngine.TensorRT;
+        }
+
+        // Check for NCNN files (.bin and .param pairs)
+        var hasBin = Directory.GetFiles(rifeModelDir, "*.bin").Length > 0;
+        var hasParam = Directory.GetFiles(rifeModelDir, "*.param").Length > 0;
+        if (hasBin && hasParam)
+        {
+            _logger?.LogDebug("[RIFE] NCNN models found, selecting NCNN engine");
+            return RifeEngine.NCNN;
+        }
+
+        // Fallback to TensorRT (most common with SVP)
+        _logger?.LogDebug("[RIFE] No specific model files found, defaulting to TensorRT");
+        return RifeEngine.TensorRT;
+    }
+
+    /// <summary>
+    /// Get available engines based on installed model files
+    /// </summary>
+    public List<RifeEngine> GetAvailableEngines()
+    {
+        var engines = new List<RifeEngine>();
+
+        if (!IsConfigured)
+            return engines;
+
+        var rifeModelDir = Path.Combine(_rifeFolderPath, "models", "rife");
+        if (!Directory.Exists(rifeModelDir))
+            return engines;
+
+        // Check for ONNX files (TensorRT)
+        if (Directory.GetFiles(rifeModelDir, "*.onnx").Length > 0)
+            engines.Add(RifeEngine.TensorRT);
+
+        // Check for NCNN files
+        if (Directory.GetFiles(rifeModelDir, "*.bin").Length > 0 &&
+            Directory.GetFiles(rifeModelDir, "*.param").Length > 0)
+            engines.Add(RifeEngine.NCNN);
+
+        return engines;
+    }
+
+    /// <summary>
     /// Maps ONNX filename (without extension) to our model name format
     /// </summary>
     private static string? MapOnnxFilenameToModelName(string onnxName)
@@ -86,9 +149,10 @@ public class RifeInterpolationService
         };
     }
 
-    public RifeInterpolationService(string rifeFolderPath = "", string pythonPath = "")
+    public RifeInterpolationService(string rifeFolderPath = "", string pythonPath = "", ILogger<RifeInterpolationService>? logger = null)
     {
         _rifeFolderPath = rifeFolderPath;
+        _logger = logger;
 
         // Auto-detect Python path if not specified
         if (string.IsNullOrEmpty(pythonPath))
@@ -168,18 +232,18 @@ public class RifeInterpolationService
         if (File.Exists(Path.Combine(_rifeFolderPath, "rife.dll")) ||
             File.Exists(Path.Combine(_rifeFolderPath, "rife_vs.dll")))
         {
-            Debug.WriteLine("Detected SVP's RIFE installation");
+            _logger?.LogDebug("Detected SVP's RIFE installation");
             return true;
         }
 
         // Check for GitHub RIFE
         if (File.Exists(Path.Combine(_rifeFolderPath, "inference_video.py")))
         {
-            Debug.WriteLine("Detected GitHub RIFE repository");
+            _logger?.LogDebug("Detected GitHub RIFE repository");
             return false;
         }
 
-        Debug.WriteLine("Unknown RIFE installation type");
+        _logger?.LogDebug("Unknown RIFE installation type");
         return false;
     }
 
@@ -193,13 +257,13 @@ public class RifeInterpolationService
 
         if (string.IsNullOrEmpty(_rifeFolderPath))
         {
-            Debug.WriteLine("WARNING: RIFE folder path not configured");
+            _logger?.LogDebug("WARNING: RIFE folder path not configured");
             throw new InvalidOperationException("RIFE is not configured. Please install RIFE and configure the path in Settings.");
         }
 
         if (!Directory.Exists(_rifeFolderPath))
         {
-            Debug.WriteLine($"WARNING: RIFE folder not found at: {_rifeFolderPath}");
+            _logger?.LogWarning($" RIFE folder not found at: {_rifeFolderPath}");
             throw new DirectoryNotFoundException($"RIFE folder not found: {_rifeFolderPath}");
         }
 
@@ -212,7 +276,7 @@ public class RifeInterpolationService
 
             if (!foundAny)
             {
-                Debug.WriteLine($"WARNING: SVP RIFE files not found in: {_rifeFolderPath}");
+                _logger?.LogWarning($" SVP RIFE files not found in: {_rifeFolderPath}");
                 throw new FileNotFoundException($"SVP RIFE files not found in: {_rifeFolderPath}");
             }
         }
@@ -222,7 +286,7 @@ public class RifeInterpolationService
             var scriptPath = Path.Combine(_rifeFolderPath, "inference_video.py");
             if (!File.Exists(scriptPath))
             {
-                Debug.WriteLine($"WARNING: inference_video.py not found in: {_rifeFolderPath}");
+                _logger?.LogWarning($" inference_video.py not found in: {_rifeFolderPath}");
                 throw new FileNotFoundException($"inference_video.py not found in: {_rifeFolderPath}");
             }
         }
@@ -257,7 +321,7 @@ public class RifeInterpolationService
         if (IsSvpRife)
         {
             // SVP's RIFE uses VapourSynth integration
-            Debug.WriteLine("Attempting SVP RIFE interpolation via VapourSynth...");
+            _logger?.LogDebug("Attempting SVP RIFE interpolation via VapourSynth...");
 
             // Check for vspipe (VapourSynth's command-line tool)
             var vspipePath = FindVsPipe();
@@ -267,7 +331,8 @@ public class RifeInterpolationService
             }
 
             // Create a VapourSynth script for SVP RIFE
-            var tempScriptPath = Path.Combine(Path.GetTempPath(), $"svp_rife_{Guid.NewGuid().ToString()[..8]}.vpy");
+            using var tempManager = new TemporaryFileManager();
+            var tempScriptPath = tempManager.GetTempFilePath("svp_rife", ".vpy");
 
             try
             {
@@ -275,7 +340,7 @@ public class RifeInterpolationService
                 var scriptContent = GenerateSvpRifeScript(inputVideoPath, options);
                 await File.WriteAllTextAsync(tempScriptPath, scriptContent, cancellationToken);
 
-                Debug.WriteLine($"Created VapourSynth script: {tempScriptPath}");
+                _logger?.LogDebug($"Created VapourSynth script: {tempScriptPath}");
 
                 // First, test if the script loads properly (streams output in real-time for debugging)
                 var testProcess = new ProcessStartInfo
@@ -292,7 +357,7 @@ public class RifeInterpolationService
                 {
                     if (test != null)
                     {
-                        Debug.WriteLine("Testing VapourSynth script (TensorRT initialization may take 5-15 minutes on first run)...");
+                        _logger?.LogDebug("Testing VapourSynth script (TensorRT initialization may take 5-15 minutes on first run)...");
 
                         var outputBuilder = new System.Text.StringBuilder();
                         var errorBuilder = new System.Text.StringBuilder();
@@ -303,7 +368,7 @@ public class RifeInterpolationService
                             string? line;
                             while ((line = await test.StandardOutput.ReadLineAsync(cancellationToken)) != null)
                             {
-                                Debug.WriteLine($"[vspipe stdout] {line}");
+                                _logger?.LogDebug($"[vspipe stdout] {line}");
                                 outputBuilder.AppendLine(line);
                             }
                         }, cancellationToken);
@@ -313,7 +378,7 @@ public class RifeInterpolationService
                             string? line;
                             while ((line = await test.StandardError.ReadLineAsync(cancellationToken)) != null)
                             {
-                                Debug.WriteLine($"[vspipe stderr] {line}");
+                                _logger?.LogDebug($"[vspipe stderr] {line}");
                                 errorBuilder.AppendLine(line);
                             }
                         }, cancellationToken);
@@ -324,7 +389,7 @@ public class RifeInterpolationService
 
                         if (!completed)
                         {
-                            Debug.WriteLine("VapourSynth script test timed out after 20 minutes");
+                            _logger?.LogDebug("VapourSynth script test timed out after 20 minutes");
                             try { test.Kill(); } catch { }
                             throw new TimeoutException("VapourSynth script test timed out. TensorRT initialization may have failed.");
                         }
@@ -337,12 +402,12 @@ public class RifeInterpolationService
 
                         if (test.ExitCode != 0)
                         {
-                            Debug.WriteLine($"VapourSynth script test failed with exit code {test.ExitCode}");
-                            Debug.WriteLine($"stderr: {testError}");
+                            _logger?.LogDebug($"VapourSynth script test failed with exit code {test.ExitCode}");
+                            _logger?.LogDebug($"stderr: {testError}");
                             throw new InvalidOperationException($"Failed to load VapourSynth script: {testError}");
                         }
 
-                        Debug.WriteLine($"VapourSynth script test passed. Output: {testOutput}");
+                        _logger?.LogDebug($"VapourSynth script test passed. Output: {testOutput}");
                     }
                 }
 
@@ -382,7 +447,7 @@ public class RifeInterpolationService
                     CreateNoWindow = true
                 };
 
-                Debug.WriteLine($"Running: {vspipeProcess.FileName} {vspipeProcess.Arguments} | {ffmpegProcess.FileName} {ffmpegProcess.Arguments}");
+                _logger?.LogDebug($"Running: {vspipeProcess.FileName} {vspipeProcess.Arguments} | {ffmpegProcess.FileName} {ffmpegProcess.Arguments}");
 
                 // Start both processes and pipe vspipe output to ffmpeg input
                 using var vspipe = SysProcess.Start(vspipeProcess);
@@ -396,13 +461,13 @@ public class RifeInterpolationService
                 // Register cancellation handlers for graceful shutdown
                 var vspipeCancellation = cancellationToken.Register(async () =>
                 {
-                    Debug.WriteLine("RIFE (SVP) cancelled - shutting down vspipe...");
+                    _logger?.LogDebug("RIFE (SVP) cancelled - shutting down vspipe...");
                     await ProcessManager.GracefulShutdownAsync(vspipe, gracefulTimeoutMs: 3000, processName: "vspipe (RIFE)");
                 });
 
                 var ffmpegCancellation = cancellationToken.Register(async () =>
                 {
-                    Debug.WriteLine("RIFE (SVP) cancelled - shutting down ffmpeg...");
+                    _logger?.LogDebug("RIFE (SVP) cancelled - shutting down ffmpeg...");
                     await ProcessManager.GracefulShutdownAsync(ffmpeg, gracefulTimeoutMs: 2000, processName: "ffmpeg (RIFE)");
                 });
 
@@ -418,7 +483,7 @@ public class RifeInterpolationService
                         }
                         catch (OperationCanceledException)
                         {
-                            Debug.WriteLine("[RIFE] Pipe operation cancelled");
+                            _logger?.LogDebug("[RIFE] Pipe operation cancelled");
                         }
                     }, cancellationToken);
 
@@ -430,7 +495,7 @@ public class RifeInterpolationService
 
                         while ((line = await vspipe.StandardError.ReadLineAsync(cancellationToken)) != null)
                         {
-                            Debug.WriteLine($"[vspipe] {line}");
+                            _logger?.LogDebug($"[vspipe] {line}");
 
                             var match = framePattern.Match(line);
                             if (match.Success &&
@@ -449,7 +514,7 @@ public class RifeInterpolationService
                         string? line;
                         while ((line = await ffmpeg.StandardError.ReadLineAsync(cancellationToken)) != null)
                         {
-                            Debug.WriteLine($"[ffmpeg] {line}");
+                            _logger?.LogDebug($"[ffmpeg] {line}");
                         }
                     }, cancellationToken);
 
@@ -464,7 +529,7 @@ public class RifeInterpolationService
                 }
                 catch (OperationCanceledException)
                 {
-                    Debug.WriteLine("RIFE (SVP) processing cancelled");
+                    _logger?.LogDebug("RIFE (SVP) processing cancelled");
                     throw;
                 }
                 finally
@@ -477,24 +542,17 @@ public class RifeInterpolationService
 
                 if (!success)
                 {
-                    Debug.WriteLine($"Processing failed - vspipe: {vspipe.ExitCode}, ffmpeg: {ffmpeg.ExitCode}");
+                    _logger?.LogDebug($"Processing failed - vspipe: {vspipe.ExitCode}, ffmpeg: {ffmpeg.ExitCode}");
                 }
 
                 return success;
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"SVP RIFE VapourSynth processing failed: {ex.Message}");
+                _logger?.LogDebug($"SVP RIFE VapourSynth processing failed: {ex.Message}");
                 throw new InvalidOperationException($"SVP RIFE processing failed: {ex.Message}", ex);
             }
-            finally
-            {
-                // Clean up temp script
-                if (File.Exists(tempScriptPath))
-                {
-                    try { File.Delete(tempScriptPath); } catch { }
-                }
-            }
+            // Temp script cleanup handled by TemporaryFileManager.Dispose()
         }
         else
         {
@@ -526,7 +584,7 @@ public class RifeInterpolationService
             }
         }
 
-        Debug.WriteLine($"Starting RIFE interpolation: {_pythonPath} {arguments}");
+        _logger?.LogDebug($"Starting RIFE interpolation: {_pythonPath} {arguments}");
 
         try
         {
@@ -552,7 +610,7 @@ public class RifeInterpolationService
                 if (string.IsNullOrEmpty(e.Data))
                     return;
 
-                Debug.WriteLine($"[RIFE] {e.Data}");
+                _logger?.LogDebug($"[RIFE] {e.Data}");
 
                 // Try to extract progress
                 var percentMatch = percentPattern.Match(e.Data);
@@ -577,14 +635,14 @@ public class RifeInterpolationService
             {
                 if (!string.IsNullOrEmpty(e.Data))
                 {
-                    Debug.WriteLine($"[RIFE ERROR] {e.Data}");
+                    _logger?.LogError($"[RIFE] {e.Data}");
                 }
             };
 
             // Register cancellation handler for graceful shutdown
             var rifeCancellation = cancellationToken.Register(async () =>
             {
-                Debug.WriteLine("RIFE (Python) cancelled - initiating graceful shutdown...");
+                _logger?.LogDebug("RIFE (Python) cancelled - initiating graceful shutdown...");
                 await ProcessManager.GracefulShutdownAsync(process, gracefulTimeoutMs: 3000, processName: "RIFE (Python)");
             });
 
@@ -599,7 +657,7 @@ public class RifeInterpolationService
             }
             catch (OperationCanceledException)
             {
-                Debug.WriteLine("RIFE (Python) processing cancelled");
+                _logger?.LogDebug("RIFE (Python) processing cancelled");
                 return false;
             }
             finally
@@ -622,11 +680,11 @@ public class RifeInterpolationService
                     if (File.Exists(expectedOutput))
                     {
                         File.Move(expectedOutput, outputVideoPath, overwrite: true);
-                        Debug.WriteLine($"Moved RIFE output from {expectedOutput} to {outputVideoPath}");
+                        _logger?.LogDebug($"Moved RIFE output from {expectedOutput} to {outputVideoPath}");
                     }
                     else
                     {
-                        Debug.WriteLine($"Warning: RIFE output file not found at expected locations");
+                        _logger?.LogDebug($"Warning: RIFE output file not found at expected locations");
                         success = false;
                     }
                 }
@@ -636,7 +694,7 @@ public class RifeInterpolationService
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"RIFE interpolation failed: {ex.Message}");
+            _logger?.LogDebug($"RIFE interpolation failed: {ex.Message}");
             throw;
         }
     }
@@ -664,11 +722,11 @@ public class RifeInterpolationService
 
         if (frameFiles.Length == 0)
         {
-            Debug.WriteLine("No PNG frames found in input folder");
+            _logger?.LogDebug("No PNG frames found in input folder");
             return false;
         }
 
-        Debug.WriteLine($"Found {frameFiles.Length} frames to interpolate");
+        _logger?.LogDebug($"Found {frameFiles.Length} frames to interpolate");
 
         // Use provided FFmpeg path or try to find it
         if (string.IsNullOrEmpty(ffmpegPath))
@@ -691,7 +749,7 @@ public class RifeInterpolationService
             var framePath = Path.Combine(inputFramesFolder, "frame_%06d.png");
             var ffmpegArgs = $"-y -framerate 30 -i \"{framePath}\" -c:v libx264 -preset fast -crf 0 -pix_fmt yuv420p \"{tempVideoIn}\"";
 
-            Debug.WriteLine($"Creating temp video from frames: {ffmpegPath} {ffmpegArgs}");
+            _logger?.LogDebug($"Creating temp video from frames: {ffmpegPath} {ffmpegArgs}");
 
             var ffmpegProcess = new SysProcess
             {
@@ -712,7 +770,7 @@ public class RifeInterpolationService
                 if (!string.IsNullOrEmpty(e.Data))
                 {
                     errorOutput.AppendLine(e.Data);
-                    Debug.WriteLine($"[FFmpeg] {e.Data}");
+                    _logger?.LogDebug($"[FFmpeg] {e.Data}");
                 }
             };
 
@@ -723,15 +781,15 @@ public class RifeInterpolationService
 
             if (!completed)
             {
-                Debug.WriteLine("FFmpeg process timed out after 5 minutes");
+                _logger?.LogDebug("FFmpeg process timed out after 5 minutes");
                 try { ffmpegProcess.Kill(); } catch { }
                 return false;
             }
 
             if (ffmpegProcess.ExitCode != 0 || !File.Exists(tempVideoIn))
             {
-                Debug.WriteLine($"FFmpeg exit code: {ffmpegProcess.ExitCode}");
-                Debug.WriteLine($"FFmpeg error output: {errorOutput}");
+                _logger?.LogDebug($"FFmpeg exit code: {ffmpegProcess.ExitCode}");
+                _logger?.LogDebug($"FFmpeg error output: {errorOutput}");
                 return false;
             }
 
@@ -748,7 +806,7 @@ public class RifeInterpolationService
 
             if (!interpolationSuccess || !File.Exists(tempVideoOut))
             {
-                Debug.WriteLine("RIFE interpolation failed");
+                _logger?.LogDebug("RIFE interpolation failed");
                 return false;
             }
 
@@ -758,7 +816,7 @@ public class RifeInterpolationService
             var outputFramePath = Path.Combine(outputFramesFolder, "frame_%06d.png");
             var extractArgs = $"-y -i \"{tempVideoOut}\" \"{outputFramePath}\"";
 
-            Debug.WriteLine($"Extracting interpolated frames: {ffmpegPath} {extractArgs}");
+            _logger?.LogDebug($"Extracting interpolated frames: {ffmpegPath} {extractArgs}");
 
             var extractErrorOutput = new System.Text.StringBuilder();
             var extractProcess = new SysProcess
@@ -779,7 +837,7 @@ public class RifeInterpolationService
                 if (!string.IsNullOrEmpty(e.Data))
                 {
                     extractErrorOutput.AppendLine(e.Data);
-                    Debug.WriteLine($"[FFmpeg Extract] {e.Data}");
+                    _logger?.LogDebug($"[FFmpeg Extract] {e.Data}");
                 }
             };
 
@@ -790,15 +848,15 @@ public class RifeInterpolationService
 
             if (!extractCompleted)
             {
-                Debug.WriteLine("FFmpeg extraction timed out after 5 minutes");
+                _logger?.LogDebug("FFmpeg extraction timed out after 5 minutes");
                 try { extractProcess.Kill(); } catch { }
                 return false;
             }
 
             if (extractProcess.ExitCode != 0)
             {
-                Debug.WriteLine($"FFmpeg extract exit code: {extractProcess.ExitCode}");
-                Debug.WriteLine($"FFmpeg extract error: {extractErrorOutput}");
+                _logger?.LogDebug($"FFmpeg extract exit code: {extractProcess.ExitCode}");
+                _logger?.LogDebug($"FFmpeg extract error: {extractErrorOutput}");
                 return false;
             }
 
@@ -806,7 +864,7 @@ public class RifeInterpolationService
 
             // Verify output frames were created
             var outputFrames = Directory.GetFiles(outputFramesFolder, "*.png");
-            Debug.WriteLine($"Extracted {outputFrames.Length} interpolated frames");
+            _logger?.LogDebug($"Extracted {outputFrames.Length} interpolated frames");
 
             return outputFrames.Length > 0;
         }
@@ -873,7 +931,7 @@ public class RifeInterpolationService
         {
             if (File.Exists(path))
             {
-                Debug.WriteLine($"Found vspipe at: {path}");
+                _logger?.LogDebug($"Found vspipe at: {path}");
                 return path;
             }
         }
@@ -899,7 +957,7 @@ public class RifeInterpolationService
 
             if (process.ExitCode == 0)
             {
-                Debug.WriteLine("Found vspipe in PATH");
+                _logger?.LogDebug("Found vspipe in PATH");
                 return "vspipe";
             }
         }
@@ -908,7 +966,7 @@ public class RifeInterpolationService
             // vspipe not in PATH
         }
 
-        Debug.WriteLine("vspipe not found");
+        _logger?.LogDebug("vspipe not found");
         return null;
     }
 
@@ -976,7 +1034,7 @@ public class RifeInterpolationService
                 $"{availableMsg}");
         }
 
-        Debug.WriteLine($"[RIFE] Using model ID {modelId} for: {modelPath}");
+        _logger?.LogDebug($"[RIFE] Using model ID {modelId} for: {modelPath}");
 
         // Determine engine backend
         var engineBackend = options.Engine switch
@@ -1116,7 +1174,7 @@ clip.set_output()
 
             if (pythonCheck.ExitCode != 0)
             {
-                Debug.WriteLine("Python not found or not working");
+                _logger?.LogDebug("Python not found or not working");
                 return false;
             }
 

@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 using CheapHelpers.MediaProcessing.Services;
+using Microsoft.Extensions.Logging;
 
 namespace CheapUpscaler.Core.Services.VapourSynth;
 
@@ -14,6 +15,7 @@ namespace CheapUpscaler.Core.Services.VapourSynth;
 public class VapourSynthEnvironment : IVapourSynthEnvironment
 {
     private readonly SvpDetectionService _svpDetection;
+    private readonly ILogger<VapourSynthEnvironment>? _logger;
     private bool _isInitialized;
     private string _pythonPath = string.Empty;
     private string? _vspipePath;
@@ -21,9 +23,10 @@ public class VapourSynthEnvironment : IVapourSynthEnvironment
     private string? _pythonVersion;
     private string? _vapourSynthVersion;
 
-    public VapourSynthEnvironment(SvpDetectionService svpDetection)
+    public VapourSynthEnvironment(SvpDetectionService svpDetection, ILogger<VapourSynthEnvironment>? logger = null)
     {
         _svpDetection = svpDetection;
+        _logger = logger;
     }
 
     public string PythonPath
@@ -82,7 +85,7 @@ public class VapourSynthEnvironment : IVapourSynthEnvironment
 
     private void DetectEnvironment()
     {
-        Debug.WriteLine("=== VapourSynth Environment Detection ===");
+        _logger?.LogDebug("=== VapourSynth Environment Detection ===");
 
         // 1. Try SVP's Python first (preferred)
         var svp = _svpDetection.DetectSvpInstallation();
@@ -90,7 +93,7 @@ public class VapourSynthEnvironment : IVapourSynthEnvironment
         {
             _pythonPath = svp.PythonPath;
             _isUsingSvpPython = true;
-            Debug.WriteLine($"Using SVP's Python: {_pythonPath}");
+            _logger?.LogDebug($"Using SVP's Python: {_pythonPath}");
         }
         else
         {
@@ -105,27 +108,27 @@ public class VapourSynthEnvironment : IVapourSynthEnvironment
                 _pythonPath = "python3";
             }
             _isUsingSvpPython = false;
-            Debug.WriteLine($"Using system PATH Python: {_pythonPath}");
+            _logger?.LogDebug($"Using system PATH Python: {_pythonPath}");
         }
 
         // Detect vspipe
         _vspipePath = FindVsPipe();
         if (_vspipePath != null)
         {
-            Debug.WriteLine($"Found vspipe: {_vspipePath}");
+            _logger?.LogDebug($"Found vspipe: {_vspipePath}");
         }
         else
         {
-            Debug.WriteLine("vspipe not found");
+            _logger?.LogDebug("vspipe not found");
         }
 
         // Detect versions
         _pythonVersion = DetectPythonVersionSync();
         _vapourSynthVersion = DetectVapourSynthVersionSync();
 
-        Debug.WriteLine($"Python version: {_pythonVersion ?? "unknown"}");
-        Debug.WriteLine($"VapourSynth version: {_vapourSynthVersion ?? "unknown"}");
-        Debug.WriteLine("==========================================");
+        _logger?.LogDebug($"Python version: {_pythonVersion ?? "unknown"}");
+        _logger?.LogDebug($"VapourSynth version: {_vapourSynthVersion ?? "unknown"}");
+        _logger?.LogDebug("==========================================");
     }
 
     private bool IsPythonInPath(string pythonCommand)
@@ -237,7 +240,7 @@ public class VapourSynthEnvironment : IVapourSynthEnvironment
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"Python version detection failed: {ex.Message}");
+            _logger?.LogDebug($"Python version detection failed: {ex.Message}");
         }
 
         return null;
@@ -276,7 +279,7 @@ public class VapourSynthEnvironment : IVapourSynthEnvironment
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"VapourSynth version detection failed: {ex.Message}");
+            _logger?.LogDebug($"VapourSynth version detection failed: {ex.Message}");
         }
 
         return null;
