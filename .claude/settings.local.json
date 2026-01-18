@@ -1,7 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(del \"C:\\\\Users\\\\Brech\\\\source\\\\repos\\\\CheapUpscaler\\\\CheapUpscaler.Blazor\\\\Components\\\\Routes.razor\")"
-    ]
-  }
-}
