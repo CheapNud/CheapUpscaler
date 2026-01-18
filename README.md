@@ -32,6 +32,19 @@ cd CheapUpscaler
 dotnet run --project CheapUpscaler.Blazor
 ```
 
+## Publish
+
+Self-contained single-file build (no .NET runtime required):
+
+```bash
+cd CheapUpscaler.Blazor
+dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o "./publish"
+```
+
+Output in `CheapUpscaler.Blazor/publish/`:
+- `CheapUpscaler.Blazor.exe` (~145 MB)
+- `wwwroot/` folder (Blazor static assets)
+
 ## Project Structure
 
 ```
