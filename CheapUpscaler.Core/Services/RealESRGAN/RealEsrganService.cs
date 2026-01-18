@@ -22,7 +22,7 @@ public class RealEsrganService
     {
         _environment = environment;
         _logger = logger;
-        _logger?.LogDebug($"RealEsrganService initialized with Python: {_environment.PythonPath}");
+        _logger?.LogDebug("RealEsrganService initialized with Python: {PythonPath}", _environment.PythonPath);
     }
 
     /// <summary>
@@ -40,7 +40,7 @@ public class RealEsrganService
 
             if (exitCode != 0 || !output.Contains("OK"))
             {
-                _logger?.LogDebug($"vsrealesrgan validation failed: {errorText}");
+                _logger?.LogWarning("vsrealesrgan validation failed: {Error}", errorText);
                 return false;
             }
 
@@ -49,7 +49,7 @@ public class RealEsrganService
         }
         catch (Exception ex)
         {
-            _logger?.LogDebug($"Error validating vsrealesrgan installation: {ex.Message}");
+            _logger?.LogWarning("Error validating vsrealesrgan installation: {Message}", ex.Message);
             return false;
         }
     }
@@ -73,8 +73,8 @@ public class RealEsrganService
         if (!string.IsNullOrEmpty(outputDir))
             Directory.CreateDirectory(outputDir);
 
-        _logger?.LogDebug($"Starting Real-ESRGAN upscaling: {inputVideoPath} -> {outputVideoPath}");
-        _logger?.LogDebug($"Model: {options.ModelName}, Scale: {options.ScaleFactor}x, Tile: {options.TileSize}px");
+        _logger?.LogDebug("Starting Real-ESRGAN upscaling: {Input} -> {Output}", inputVideoPath, outputVideoPath);
+        _logger?.LogDebug("Model: {Model}, Scale: {Scale}x, Tile: {TileSize}px", options.ModelName, options.ScaleFactor, options.TileSize);
 
         // Check for vspipe (VapourSynth's command-line tool)
         var vspipePath = _environment.VsPipePath;
@@ -92,7 +92,7 @@ public class RealEsrganService
             var scriptContent = GenerateRealEsrganScript(inputVideoPath, options);
             await File.WriteAllTextAsync(tempScriptPath, scriptContent, cancellationToken);
 
-            _logger?.LogDebug($"Created VapourSynth script: {tempScriptPath}");
+            _logger?.LogDebug("Created VapourSynth script: {ScriptPath}", tempScriptPath);
 
             // Test if the script loads properly (important for first-time model downloads)
             _logger?.LogDebug("Testing VapourSynth script (may download model on first run)...");
@@ -122,18 +122,18 @@ public class RealEsrganService
                     }
                     catch (OperationCanceledException)
                     {
-                        _logger?.LogDebug("VapourSynth script test timed out after 10 minutes");
+                        _logger?.LogWarning("VapourSynth script test timed out after 10 minutes");
                         try { test.Kill(); } catch { }
                         throw new TimeoutException("VapourSynth script test timed out. Model download may have failed.");
                     }
 
                     if (test.ExitCode != 0)
                     {
-                        _logger?.LogDebug($"VapourSynth script test failed: {testError}");
+                        _logger?.LogError("VapourSynth script test failed: {Error}", testError);
                         throw new InvalidOperationException($"Failed to load VapourSynth script: {testError}");
                     }
 
-                    _logger?.LogDebug($"VapourSynth script validated: {testOutput}");
+                    _logger?.LogDebug("VapourSynth script validated: {Output}", testOutput);
                 }
             }
 
@@ -175,7 +175,7 @@ public class RealEsrganService
                 CreateNoWindow = true
             };
 
-            _logger?.LogDebug($"Pipeline: {vspipeProcess.FileName} {vspipeProcess.Arguments} | {ffmpegProcess.FileName} {ffmpegProcess.Arguments}");
+            _logger?.LogDebug("Pipeline: {VspipeCmd} {VspipeArgs} | {FfmpegCmd} {FfmpegArgs}", vspipeProcess.FileName, vspipeProcess.Arguments, ffmpegProcess.FileName, ffmpegProcess.Arguments);
 
             // Start both processes and pipe vspipe output to ffmpeg input
             using var vspipe = SysProcess.Start(vspipeProcess);
@@ -223,7 +223,7 @@ public class RealEsrganService
 
                     while ((line = await vspipe.StandardError.ReadLineAsync(cancellationToken)) != null)
                     {
-                        _logger?.LogDebug($"[vspipe] {line}");
+                        _logger?.LogDebug("[vspipe] {Line}", line);
 
                         var match = framePattern.Match(line);
                         if (match.Success &&
@@ -242,7 +242,7 @@ public class RealEsrganService
                     string? line;
                     while ((line = await ffmpeg.StandardError.ReadLineAsync(cancellationToken)) != null)
                     {
-                        _logger?.LogDebug($"[ffmpeg] {line}");
+                        _logger?.LogDebug("[ffmpeg] {Line}", line);
                     }
                 }, cancellationToken);
 
@@ -270,18 +270,18 @@ public class RealEsrganService
 
             if (!success)
             {
-                _logger?.LogDebug($"Processing failed - vspipe: {vspipe.ExitCode}, ffmpeg: {ffmpeg.ExitCode}");
+                _logger?.LogError("Processing failed - vspipe exit: {VspipeExitCode}, ffmpeg exit: {FfmpegExitCode}", vspipe.ExitCode, ffmpeg.ExitCode);
             }
             else
             {
-                _logger?.LogDebug($"Real-ESRGAN upscaling completed successfully: {outputVideoPath}");
+                _logger?.LogDebug("Real-ESRGAN upscaling completed successfully: {OutputPath}", outputVideoPath);
             }
 
             return success;
         }
         catch (Exception ex)
         {
-            _logger?.LogDebug($"Real-ESRGAN upscaling failed: {ex.Message}");
+            _logger?.LogError(ex, "Real-ESRGAN upscaling failed: {Message}", ex.Message);
             throw new InvalidOperationException($"Real-ESRGAN processing failed: {ex.Message}", ex);
         }
         finally
@@ -394,7 +394,7 @@ clip.set_output()
             // Check if Python is available
             if (!await _environment.IsPythonAvailableAsync())
             {
-                _logger?.LogDebug("Python not found or not working");
+                _logger?.LogWarning("Python not found or not working");
                 return false;
             }
 
@@ -403,7 +403,7 @@ clip.set_output()
         }
         catch (Exception ex)
         {
-            _logger?.LogDebug($"Real-ESRGAN availability check failed: {ex.Message}");
+            _logger?.LogWarning("Real-ESRGAN availability check failed: {Message}", ex.Message);
             return false;
         }
     }

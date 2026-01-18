@@ -257,13 +257,13 @@ public class RifeInterpolationService
 
         if (string.IsNullOrEmpty(_rifeFolderPath))
         {
-            _logger?.LogDebug("WARNING: RIFE folder path not configured");
+            _logger?.LogWarning("RIFE folder path not configured");
             throw new InvalidOperationException("RIFE is not configured. Please install RIFE and configure the path in Settings.");
         }
 
         if (!Directory.Exists(_rifeFolderPath))
         {
-            _logger?.LogWarning($" RIFE folder not found at: {_rifeFolderPath}");
+            _logger?.LogWarning("RIFE folder not found at: {RifeFolderPath}", _rifeFolderPath);
             throw new DirectoryNotFoundException($"RIFE folder not found: {_rifeFolderPath}");
         }
 
@@ -276,7 +276,7 @@ public class RifeInterpolationService
 
             if (!foundAny)
             {
-                _logger?.LogWarning($" SVP RIFE files not found in: {_rifeFolderPath}");
+                _logger?.LogWarning("SVP RIFE files not found in: {RifeFolderPath}", _rifeFolderPath);
                 throw new FileNotFoundException($"SVP RIFE files not found in: {_rifeFolderPath}");
             }
         }
@@ -286,7 +286,7 @@ public class RifeInterpolationService
             var scriptPath = Path.Combine(_rifeFolderPath, "inference_video.py");
             if (!File.Exists(scriptPath))
             {
-                _logger?.LogWarning($" inference_video.py not found in: {_rifeFolderPath}");
+                _logger?.LogWarning("inference_video.py not found in: {RifeFolderPath}", _rifeFolderPath);
                 throw new FileNotFoundException($"inference_video.py not found in: {_rifeFolderPath}");
             }
         }
@@ -389,7 +389,7 @@ public class RifeInterpolationService
 
                         if (!completed)
                         {
-                            _logger?.LogDebug("VapourSynth script test timed out after 20 minutes");
+                            _logger?.LogWarning("VapourSynth script test timed out after 20 minutes");
                             try { test.Kill(); } catch { }
                             throw new TimeoutException("VapourSynth script test timed out. TensorRT initialization may have failed.");
                         }
@@ -402,8 +402,8 @@ public class RifeInterpolationService
 
                         if (test.ExitCode != 0)
                         {
-                            _logger?.LogDebug($"VapourSynth script test failed with exit code {test.ExitCode}");
-                            _logger?.LogDebug($"stderr: {testError}");
+                            _logger?.LogError("VapourSynth script test failed with exit code {ExitCode}", test.ExitCode);
+                            _logger?.LogError("VapourSynth stderr: {StdErr}", testError);
                             throw new InvalidOperationException($"Failed to load VapourSynth script: {testError}");
                         }
 
@@ -542,14 +542,14 @@ public class RifeInterpolationService
 
                 if (!success)
                 {
-                    _logger?.LogDebug($"Processing failed - vspipe: {vspipe.ExitCode}, ffmpeg: {ffmpeg.ExitCode}");
+                    _logger?.LogError("Processing failed - vspipe exit: {VspipeExitCode}, ffmpeg exit: {FfmpegExitCode}", vspipe.ExitCode, ffmpeg.ExitCode);
                 }
 
                 return success;
             }
             catch (Exception ex)
             {
-                _logger?.LogDebug($"SVP RIFE VapourSynth processing failed: {ex.Message}");
+                _logger?.LogError(ex, "SVP RIFE VapourSynth processing failed: {Message}", ex.Message);
                 throw new InvalidOperationException($"SVP RIFE processing failed: {ex.Message}", ex);
             }
             // Temp script cleanup handled by TemporaryFileManager.Dispose()
@@ -635,7 +635,8 @@ public class RifeInterpolationService
             {
                 if (!string.IsNullOrEmpty(e.Data))
                 {
-                    _logger?.LogError($"[RIFE] {e.Data}");
+                    // stderr often contains progress info, not just errors
+                    _logger?.LogDebug("[RIFE stderr] {Data}", e.Data);
                 }
             };
 
@@ -680,11 +681,11 @@ public class RifeInterpolationService
                     if (File.Exists(expectedOutput))
                     {
                         File.Move(expectedOutput, outputVideoPath, overwrite: true);
-                        _logger?.LogDebug($"Moved RIFE output from {expectedOutput} to {outputVideoPath}");
+                        _logger?.LogDebug("Moved RIFE output from {ExpectedOutput} to {OutputVideoPath}", expectedOutput, outputVideoPath);
                     }
                     else
                     {
-                        _logger?.LogDebug($"Warning: RIFE output file not found at expected locations");
+                        _logger?.LogWarning("RIFE output file not found at expected locations");
                         success = false;
                     }
                 }
@@ -694,7 +695,7 @@ public class RifeInterpolationService
         }
         catch (Exception ex)
         {
-            _logger?.LogDebug($"RIFE interpolation failed: {ex.Message}");
+            _logger?.LogError(ex, "RIFE interpolation failed: {Message}", ex.Message);
             throw;
         }
     }
@@ -781,15 +782,15 @@ public class RifeInterpolationService
 
             if (!completed)
             {
-                _logger?.LogDebug("FFmpeg process timed out after 5 minutes");
+                _logger?.LogWarning("FFmpeg process timed out after 5 minutes");
                 try { ffmpegProcess.Kill(); } catch { }
                 return false;
             }
 
             if (ffmpegProcess.ExitCode != 0 || !File.Exists(tempVideoIn))
             {
-                _logger?.LogDebug($"FFmpeg exit code: {ffmpegProcess.ExitCode}");
-                _logger?.LogDebug($"FFmpeg error output: {errorOutput}");
+                _logger?.LogError("FFmpeg failed with exit code: {ExitCode}", ffmpegProcess.ExitCode);
+                _logger?.LogError("FFmpeg error output: {ErrorOutput}", errorOutput);
                 return false;
             }
 
@@ -806,7 +807,7 @@ public class RifeInterpolationService
 
             if (!interpolationSuccess || !File.Exists(tempVideoOut))
             {
-                _logger?.LogDebug("RIFE interpolation failed");
+                _logger?.LogError("RIFE interpolation failed for frames");
                 return false;
             }
 
@@ -848,15 +849,15 @@ public class RifeInterpolationService
 
             if (!extractCompleted)
             {
-                _logger?.LogDebug("FFmpeg extraction timed out after 5 minutes");
+                _logger?.LogWarning("FFmpeg extraction timed out after 5 minutes");
                 try { extractProcess.Kill(); } catch { }
                 return false;
             }
 
             if (extractProcess.ExitCode != 0)
             {
-                _logger?.LogDebug($"FFmpeg extract exit code: {extractProcess.ExitCode}");
-                _logger?.LogDebug($"FFmpeg extract error: {extractErrorOutput}");
+                _logger?.LogError("FFmpeg extract failed with exit code: {ExitCode}", extractProcess.ExitCode);
+                _logger?.LogError("FFmpeg extract error: {ErrorOutput}", extractErrorOutput);
                 return false;
             }
 
