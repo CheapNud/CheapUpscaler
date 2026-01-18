@@ -10,11 +10,11 @@
 
   <ItemGroup>
     <!-- Desktop framework with Avalonia + Photino + Blazor -->
-    <PackageReference Include="CheapAvaloniaBlazor" Version="1.1.3" />
+    <PackageReference Include="CheapAvaloniaBlazor" Version="1.1.4" />
     <!-- UI component library -->
     <PackageReference Include="MudBlazor" Version="8.15.0" />
     <!-- Database for job persistence -->
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.0" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.2" />
   </ItemGroup>
 
   <ItemGroup>
