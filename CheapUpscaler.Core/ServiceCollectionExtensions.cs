@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 using CheapUpscaler.Core.Services.VapourSynth;
 using CheapUpscaler.Core.Services.RIFE;
@@ -11,6 +12,12 @@ namespace CheapUpscaler.Core;
 /// <summary>
 /// Dependency injection extension methods for CheapUpscaler.Core services
 /// </summary>
+/// <remarks>
+/// SVP Integration: RifeInterpolationService is configured via factory pattern to automatically
+/// detect SVP 4 Pro installation and use its bundled RIFE, Python, and TensorRT components.
+/// If SVP is not installed, paths will be empty and RIFE features will be unavailable.
+/// Future: Add AppSettings integration for manual path configuration.
+/// </remarks>
 public static class ServiceCollectionExtensions
 {
     /// <summary>
@@ -22,20 +29,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IVapourSynthEnvironment, VapourSynthEnvironment>();
 
         // RIFE frame interpolation - configured via factory to get SVP paths
-        services.AddTransient(sp =>
-        {
-            var svpDetection = sp.GetRequiredService<SvpDetectionService>();
-            var svp = svpDetection.DetectSvpInstallation();
-
-            var rifePath = svp.IsInstalled && !string.IsNullOrEmpty(svp.RifePath)
-                ? svp.RifePath
-                : "";
-            var pythonPath = svp.IsInstalled && !string.IsNullOrEmpty(svp.PythonPath)
-                ? svp.PythonPath
-                : "";
-
-            return new RifeInterpolationService(rifePath, pythonPath);
-        });
+        services.AddTransient(CreateRifeService);
         services.AddTransient<RifeVariantDetector>();
 
         // AI upscaling services
@@ -63,20 +57,7 @@ public static class ServiceCollectionExtensions
     public static IServiceCollection AddRifeServices(this IServiceCollection services)
     {
         services.AddSingleton<IVapourSynthEnvironment, VapourSynthEnvironment>();
-        services.AddTransient(sp =>
-        {
-            var svpDetection = sp.GetRequiredService<SvpDetectionService>();
-            var svp = svpDetection.DetectSvpInstallation();
-
-            var rifePath = svp.IsInstalled && !string.IsNullOrEmpty(svp.RifePath)
-                ? svp.RifePath
-                : "";
-            var pythonPath = svp.IsInstalled && !string.IsNullOrEmpty(svp.PythonPath)
-                ? svp.PythonPath
-                : "";
-
-            return new RifeInterpolationService(rifePath, pythonPath);
-        });
+        services.AddTransient(CreateRifeService);
         services.AddTransient<RifeVariantDetector>();
         return services;
     }
@@ -91,5 +72,41 @@ public static class ServiceCollectionExtensions
         services.AddTransient<RealEsrganService>();
         services.AddTransient<NonAiUpscalingService>();
         return services;
+    }
+
+    /// <summary>
+    /// Factory method to create RifeInterpolationService with SVP-detected paths
+    /// </summary>
+    /// <remarks>
+    /// Detection priority:
+    /// 1. SVP 4 Pro installation (includes RIFE, Python, TensorRT)
+    /// 2. Future: AppSettings.ToolPaths.RifeFolderPath for manual configuration
+    /// 3. Empty paths (RIFE features unavailable, will show error at runtime)
+    /// </remarks>
+    private static RifeInterpolationService CreateRifeService(IServiceProvider serviceProvider)
+    {
+        var svpDetection = serviceProvider.GetRequiredService<SvpDetectionService>();
+        var svp = svpDetection.DetectSvpInstallation();
+
+        string rifePath;
+        string pythonPath;
+
+        if (svp.IsInstalled && !string.IsNullOrEmpty(svp.RifePath))
+        {
+            rifePath = svp.RifePath;
+            pythonPath = !string.IsNullOrEmpty(svp.PythonPath) ? svp.PythonPath : "";
+            Debug.WriteLine($"[RIFE] Using SVP installation: {rifePath}");
+        }
+        else
+        {
+            // SVP not found - RIFE will not be available
+            // TODO: Check AppSettings.ToolPaths.RifeFolderPath for manual configuration
+            rifePath = "";
+            pythonPath = "";
+            Debug.WriteLine("[RIFE] WARNING: SVP not detected. RIFE frame interpolation will not be available.");
+            Debug.WriteLine("[RIFE] Install SVP 4 Pro from https://www.svp-team.com/get/ for RIFE support.");
+        }
+
+        return new RifeInterpolationService(rifePath, pythonPath);
     }
 }

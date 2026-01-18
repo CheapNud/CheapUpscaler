@@ -160,6 +160,48 @@ AI video upscaling and frame interpolation. Takes rendered video output (from Ch
 
 ---
 
+## Next Branch: SVP Detection & Path Configuration Fixes
+
+Issues from PR #2 review and code audit. See: https://github.com/CheapNud/CheapUpscaler/pull/2
+
+### Critical Fixes (Breaking without SVP)
+
+- [ ] **Add `RifeFolderPath` to `AppSettings.ToolPaths`** - Allow user-configurable RIFE path in Settings UI
+- [ ] **Fix empty string fallbacks in DI factory** (`ServiceCollectionExtensions.cs:30-35`)
+  - Currently: `rifePath = svp.RifePath ?: ""` → crashes at runtime
+  - Should: Check AppSettings first, then SVP, then fail gracefully with error message
+- [ ] **Make VapourSynth script generation conditional** (`RifeInterpolationService.cs`)
+  - Validate paths exist before generating script
+  - `svpModelPath` is currently hardcoded, breaks without SVP
+- [ ] **Extract factory to avoid DRY violation** - Same factory logic duplicated in `AddUpscalerServices` and `AddRifeServices`
+
+### Code Quality (From PR Bot Review)
+
+- [ ] **Add constants for magic strings** - `"vstrt.dll"`, `"rife_vs.dll"`, `"rife.dll"` etc.
+- [ ] **Safe path handling** - `Path.GetDirectoryName(pluginPath) ?? ""` returns empty string, should throw
+- [ ] **Use proper logging** - Replace `Debug.WriteLine` with `ILogger<T>` injection
+- [ ] **Add XML documentation** - Explain SVP integration approach
+
+### Dead Code Cleanup
+
+- [ ] **Remove or integrate `RifeVariantDetector`** - Currently registered but never used in job processing
+- [ ] **Remove `RifeOptions.BuildArguments()`** - Dead code, was for CLI RIFE
+- [ ] **Remove GitHub RIFE code path** (`RifeInterpolationService.cs:408-436`) - Can never execute
+
+### Temp File Management
+
+- [ ] **Use `TemporaryFileManager` from CheapHelpers.MediaProcessing** for VapourSynth script files
+  - Currently: `Path.Combine(Path.GetTempPath(), $"svp_rife_{Guid}.vpy")`
+  - Should: Use `TemporaryFileManager.GetTempFilePath("svp_rife", ".vpy")` with proper cleanup
+
+### Future Enhancement Ideas
+
+- [ ] **Model detection** - Detect which ONNX models are actually installed, adjust UI options
+- [ ] **Engine auto-selection** - TensorRT if ONNX available, NCNN_VK if only .bin/.param
+- [ ] **Integrate `DependencyChecker` results** - Use detected RIFE path to initialize service at runtime
+
+---
+
 ## Future: Ubuntu Worker Service
 
 When ready to deploy to Tranquility (Ubuntu server):

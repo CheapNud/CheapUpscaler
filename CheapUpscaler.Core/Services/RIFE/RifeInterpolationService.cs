@@ -824,6 +824,13 @@ public class RifeInterpolationService
     {
         var multiplier = options.GetFrameMultiplier();
 
+        // Validate RIFE folder path exists before generating script
+        if (string.IsNullOrEmpty(_rifeFolderPath))
+            throw new InvalidOperationException("RIFE folder path is not configured. Install SVP 4 Pro or configure RIFE path in Settings.");
+
+        if (!Directory.Exists(_rifeFolderPath))
+            throw new DirectoryNotFoundException($"RIFE folder not found: {_rifeFolderPath}");
+
         var pluginPath = Path.Combine(_rifeFolderPath, "rife_vs.dll");
 
         // Map our model names to SVP's expected format (model ID used by vsmlrt)
@@ -860,8 +867,8 @@ public class RifeInterpolationService
         var sceneDetect = options.SceneDetection == SceneChangeDetection.Disabled ? "None" : "True";
         var targetHeight = options.FrameHeight;
 
-        // SVP model path for ONNX files
-        var svpModelPath = Path.Combine(Path.GetDirectoryName(pluginPath) ?? "", "models", "rife");
+        // SVP model path for ONNX files (use _rifeFolderPath which is already validated)
+        var svpModelPath = Path.Combine(_rifeFolderPath, "models", "rife");
 
         return $@"
 import vapoursynth as vs
@@ -870,7 +877,7 @@ import os
 
 core = vs.core
 
-sys.path.insert(0, r'{Path.GetDirectoryName(pluginPath)}')
+sys.path.insert(0, r'{_rifeFolderPath}')
 
 try:
     bs_plugin = r'C:\Program Files\VapourSynth\plugins\BestSource.dll'
@@ -881,8 +888,8 @@ except:
 
 try:
     core.std.LoadPlugin(r'{pluginPath}')
-    core.std.LoadPlugin(r'{Path.Combine(Path.GetDirectoryName(pluginPath) ?? "", "vstrt.dll")}')
-    core.std.LoadPlugin(r'{Path.Combine(Path.GetDirectoryName(pluginPath) ?? "", "akarin.dll")}')
+    core.std.LoadPlugin(r'{Path.Combine(_rifeFolderPath, "vstrt.dll")}')
+    core.std.LoadPlugin(r'{Path.Combine(_rifeFolderPath, "akarin.dll")}')
 except:
     pass
 

@@ -16,6 +16,17 @@ public class DependencyChecker(
     SvpDetectionService svpDetectionService)
 {
     /// <summary>
+    /// Known DLL file names for SVP and TensorRT detection
+    /// </summary>
+    private static class KnownDlls
+    {
+        public const string TensorRt = "vstrt.dll";
+        public const string RifeVs = "rife_vs.dll";
+        public const string Rife = "rife.dll";
+        public const string NvInfer = "nvinfer.dll";
+    }
+
+    /// <summary>
     /// Check all dependencies and return overall status
     /// </summary>
     public async Task<DependencyStatus> CheckAllDependenciesAsync()
@@ -157,7 +168,7 @@ public class DependencyChecker(
             if (!info.IsInstalled)
             {
                 // Alternative check - try importing from vs
-                var (exitCode2, output2, _) = await vapourSynthEnvironment.RunPythonCommandAsync(
+                var (exitCode2, _, _) = await vapourSynthEnvironment.RunPythonCommandAsync(
                     "-c \"from vsmlrt import Backend; print('OK')\"",
                     timeoutMs: 10000);
 
@@ -228,7 +239,7 @@ public class DependencyChecker(
             if (svp.IsInstalled && !string.IsNullOrEmpty(svp.RifePath))
             {
                 // SVP bundles TensorRT with RIFE - check for vstrt.dll
-                var vstrtDll = Path.Combine(svp.RifePath, "vstrt.dll");
+                var vstrtDll = Path.Combine(svp.RifePath, KnownDlls.TensorRt);
                 if (File.Exists(vstrtDll))
                 {
                     info.IsInstalled = true;
@@ -264,7 +275,7 @@ public class DependencyChecker(
                 var pathDirs = Environment.GetEnvironmentVariable("PATH")?.Split(';') ?? [];
                 foreach (var dir in pathDirs)
                 {
-                    if (File.Exists(Path.Combine(dir, "nvinfer.dll")))
+                    if (File.Exists(Path.Combine(dir, KnownDlls.NvInfer)))
                     {
                         info.IsInstalled = true;
                         info.Path = dir;
@@ -301,8 +312,8 @@ public class DependencyChecker(
             if (svp.IsInstalled && !string.IsNullOrEmpty(svp.RifePath))
             {
                 // Check for SVP RIFE DLLs
-                var rifeDll = Path.Combine(svp.RifePath, "rife_vs.dll");
-                var rifeAltDll = Path.Combine(svp.RifePath, "rife.dll");
+                var rifeDll = Path.Combine(svp.RifePath, KnownDlls.RifeVs);
+                var rifeAltDll = Path.Combine(svp.RifePath, KnownDlls.Rife);
 
                 if (File.Exists(rifeDll) || File.Exists(rifeAltDll))
                 {
