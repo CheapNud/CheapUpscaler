@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Text.RegularExpressions;
 using CheapUpscaler.Core.Models;
 using CheapUpscaler.Core.Services.VapourSynth;
+using CheapHelpers.MediaProcessing.Services.Utilities;
 using Microsoft.Extensions.Logging;
 
 namespace CheapUpscaler.Core.Services.RealCUGAN;
@@ -88,7 +89,8 @@ public class RealCuganService
         }
 
         // Create VapourSynth script for Real-CUGAN
-        var tempScriptPath = Path.Combine(Path.GetTempPath(), $"realcugan_{Guid.NewGuid().ToString()[..8]}.vpy");
+        using var tempManager = new TemporaryFileManager();
+        var tempScriptPath = tempManager.GetTempFilePath("realcugan", ".vpy");
 
         try
         {
@@ -329,14 +331,7 @@ public class RealCuganService
             _logger?.LogError(ex, "Real-CUGAN upscaling failed: {Message}", ex.Message);
             throw new InvalidOperationException($"Real-CUGAN processing failed: {ex.Message}", ex);
         }
-        finally
-        {
-            // Clean up temp script
-            if (File.Exists(tempScriptPath))
-            {
-                try { File.Delete(tempScriptPath); } catch { }
-            }
-        }
+        // Temp script cleanup handled by TemporaryFileManager.Dispose()
     }
 
     /// <summary>

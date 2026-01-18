@@ -84,7 +84,8 @@ public class RealEsrganService
         }
 
         // Create VapourSynth script for Real-ESRGAN
-        var tempScriptPath = Path.Combine(Path.GetTempPath(), $"realesrgan_{Guid.NewGuid().ToString()[..8]}.vpy");
+        using var tempManager = new TemporaryFileManager();
+        var tempScriptPath = tempManager.GetTempFilePath("realesrgan", ".vpy");
 
         try
         {
@@ -284,14 +285,7 @@ public class RealEsrganService
             _logger?.LogError(ex, "Real-ESRGAN upscaling failed: {Message}", ex.Message);
             throw new InvalidOperationException($"Real-ESRGAN processing failed: {ex.Message}", ex);
         }
-        finally
-        {
-            // Clean up temp script
-            if (File.Exists(tempScriptPath))
-            {
-                try { File.Delete(tempScriptPath); } catch { }
-            }
-        }
+        // Temp script cleanup handled by TemporaryFileManager.Dispose()
     }
 
     /// <summary>

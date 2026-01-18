@@ -340,7 +340,7 @@ public class RifeInterpolationService
                 var scriptContent = GenerateSvpRifeScript(inputVideoPath, options);
                 await File.WriteAllTextAsync(tempScriptPath, scriptContent, cancellationToken);
 
-                _logger?.LogDebug($"Created VapourSynth script: {tempScriptPath}");
+                _logger?.LogDebug("Created VapourSynth script: {ScriptPath}", tempScriptPath);
 
                 // First, test if the script loads properly (streams output in real-time for debugging)
                 var testProcess = new ProcessStartInfo
@@ -368,7 +368,7 @@ public class RifeInterpolationService
                             string? line;
                             while ((line = await test.StandardOutput.ReadLineAsync(cancellationToken)) != null)
                             {
-                                _logger?.LogDebug($"[vspipe stdout] {line}");
+                                _logger?.LogDebug("[vspipe stdout] {Line}", line);
                                 outputBuilder.AppendLine(line);
                             }
                         }, cancellationToken);
@@ -378,7 +378,7 @@ public class RifeInterpolationService
                             string? line;
                             while ((line = await test.StandardError.ReadLineAsync(cancellationToken)) != null)
                             {
-                                _logger?.LogDebug($"[vspipe stderr] {line}");
+                                _logger?.LogDebug("[vspipe stderr] {Line}", line);
                                 errorBuilder.AppendLine(line);
                             }
                         }, cancellationToken);
@@ -407,7 +407,7 @@ public class RifeInterpolationService
                             throw new InvalidOperationException($"Failed to load VapourSynth script: {testError}");
                         }
 
-                        _logger?.LogDebug($"VapourSynth script test passed. Output: {testOutput}");
+                        _logger?.LogDebug("VapourSynth script test passed. Output: {TestOutput}", testOutput);
                     }
                 }
 
@@ -447,7 +447,7 @@ public class RifeInterpolationService
                     CreateNoWindow = true
                 };
 
-                _logger?.LogDebug($"Running: {vspipeProcess.FileName} {vspipeProcess.Arguments} | {ffmpegProcess.FileName} {ffmpegProcess.Arguments}");
+                _logger?.LogDebug("Running: {VspipeCmd} {VspipeArgs} | {FfmpegCmd} {FfmpegArgs}", vspipeProcess.FileName, vspipeProcess.Arguments, ffmpegProcess.FileName, ffmpegProcess.Arguments);
 
                 // Start both processes and pipe vspipe output to ffmpeg input
                 using var vspipe = SysProcess.Start(vspipeProcess);
@@ -495,7 +495,7 @@ public class RifeInterpolationService
 
                         while ((line = await vspipe.StandardError.ReadLineAsync(cancellationToken)) != null)
                         {
-                            _logger?.LogDebug($"[vspipe] {line}");
+                            _logger?.LogDebug("[vspipe] {Line}", line);
 
                             var match = framePattern.Match(line);
                             if (match.Success &&
@@ -514,7 +514,7 @@ public class RifeInterpolationService
                         string? line;
                         while ((line = await ffmpeg.StandardError.ReadLineAsync(cancellationToken)) != null)
                         {
-                            _logger?.LogDebug($"[ffmpeg] {line}");
+                            _logger?.LogDebug("[ffmpeg] {Line}", line);
                         }
                     }, cancellationToken);
 
@@ -584,7 +584,7 @@ public class RifeInterpolationService
             }
         }
 
-        _logger?.LogDebug($"Starting RIFE interpolation: {_pythonPath} {arguments}");
+        _logger?.LogDebug("Starting RIFE interpolation: {PythonPath} {Arguments}", _pythonPath, arguments);
 
         try
         {
@@ -610,7 +610,7 @@ public class RifeInterpolationService
                 if (string.IsNullOrEmpty(e.Data))
                     return;
 
-                _logger?.LogDebug($"[RIFE] {e.Data}");
+                _logger?.LogDebug("[RIFE] {Data}", e.Data);
 
                 // Try to extract progress
                 var percentMatch = percentPattern.Match(e.Data);
@@ -727,7 +727,7 @@ public class RifeInterpolationService
             return false;
         }
 
-        _logger?.LogDebug($"Found {frameFiles.Length} frames to interpolate");
+        _logger?.LogDebug("Found {FrameCount} frames to interpolate", frameFiles.Length);
 
         // Use provided FFmpeg path or try to find it
         if (string.IsNullOrEmpty(ffmpegPath))
@@ -741,16 +741,15 @@ public class RifeInterpolationService
         }
 
         // Create temporary video from frames
-        var tempVideoIn = Path.Combine(Path.GetTempPath(), $"rife_temp_{Guid.NewGuid().ToString()[..8]}.mp4");
-        var tempVideoOut = Path.Combine(Path.GetTempPath(), $"rife_out_{Guid.NewGuid().ToString()[..8]}.mp4");
+        using var tempManager = new TemporaryFileManager();
+        var tempVideoIn = tempManager.GetTempFilePath("rife_temp", ".mp4");
+        var tempVideoOut = tempManager.GetTempFilePath("rife_out", ".mp4");
 
-        try
-        {
-            // Step 1: Convert frames to video using FFmpeg
+        // Step 1: Convert frames to video using FFmpeg
             var framePath = Path.Combine(inputFramesFolder, "frame_%06d.png");
             var ffmpegArgs = $"-y -framerate 30 -i \"{framePath}\" -c:v libx264 -preset fast -crf 0 -pix_fmt yuv420p \"{tempVideoIn}\"";
 
-            _logger?.LogDebug($"Creating temp video from frames: {ffmpegPath} {ffmpegArgs}");
+            _logger?.LogDebug("Creating temp video from frames: {FfmpegPath} {FfmpegArgs}", ffmpegPath, ffmpegArgs);
 
             var ffmpegProcess = new SysProcess
             {
@@ -771,7 +770,7 @@ public class RifeInterpolationService
                 if (!string.IsNullOrEmpty(e.Data))
                 {
                     errorOutput.AppendLine(e.Data);
-                    _logger?.LogDebug($"[FFmpeg] {e.Data}");
+                    _logger?.LogDebug("[FFmpeg] {Data}", e.Data);
                 }
             };
 
@@ -817,7 +816,7 @@ public class RifeInterpolationService
             var outputFramePath = Path.Combine(outputFramesFolder, "frame_%06d.png");
             var extractArgs = $"-y -i \"{tempVideoOut}\" \"{outputFramePath}\"";
 
-            _logger?.LogDebug($"Extracting interpolated frames: {ffmpegPath} {extractArgs}");
+            _logger?.LogDebug("Extracting interpolated frames: {FfmpegPath} {ExtractArgs}", ffmpegPath, extractArgs);
 
             var extractErrorOutput = new System.Text.StringBuilder();
             var extractProcess = new SysProcess
@@ -838,7 +837,7 @@ public class RifeInterpolationService
                 if (!string.IsNullOrEmpty(e.Data))
                 {
                     extractErrorOutput.AppendLine(e.Data);
-                    _logger?.LogDebug($"[FFmpeg Extract] {e.Data}");
+                    _logger?.LogDebug("[FFmpeg Extract] {Data}", e.Data);
                 }
             };
 
@@ -865,22 +864,10 @@ public class RifeInterpolationService
 
             // Verify output frames were created
             var outputFrames = Directory.GetFiles(outputFramesFolder, "*.png");
-            _logger?.LogDebug($"Extracted {outputFrames.Length} interpolated frames");
+            _logger?.LogDebug("Extracted {FrameCount} interpolated frames", outputFrames.Length);
 
-            return outputFrames.Length > 0;
-        }
-        finally
-        {
-            // Clean up temp files
-            if (File.Exists(tempVideoIn))
-            {
-                try { File.Delete(tempVideoIn); } catch { }
-            }
-            if (File.Exists(tempVideoOut))
-            {
-                try { File.Delete(tempVideoOut); } catch { }
-            }
-        }
+        return outputFrames.Length > 0;
+        // Temp video cleanup handled by TemporaryFileManager.Dispose()
     }
 
     /// <summary>
@@ -932,7 +919,7 @@ public class RifeInterpolationService
         {
             if (File.Exists(path))
             {
-                _logger?.LogDebug($"Found vspipe at: {path}");
+                _logger?.LogDebug("Found vspipe at: {Path}", path);
                 return path;
             }
         }
@@ -1035,7 +1022,7 @@ public class RifeInterpolationService
                 $"{availableMsg}");
         }
 
-        _logger?.LogDebug($"[RIFE] Using model ID {modelId} for: {modelPath}");
+        _logger?.LogDebug("[RIFE] Using model ID {ModelId} for: {ModelPath}", modelId, modelPath);
 
         // Determine engine backend
         var engineBackend = options.Engine switch

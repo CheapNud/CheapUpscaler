@@ -93,7 +93,7 @@ public class VapourSynthEnvironment : IVapourSynthEnvironment
         {
             _pythonPath = svp.PythonPath;
             _isUsingSvpPython = true;
-            _logger?.LogDebug($"Using SVP's Python: {_pythonPath}");
+            _logger?.LogDebug("Using SVP's Python: {PythonPath}", _pythonPath);
         }
         else
         {
@@ -108,14 +108,14 @@ public class VapourSynthEnvironment : IVapourSynthEnvironment
                 _pythonPath = "python3";
             }
             _isUsingSvpPython = false;
-            _logger?.LogDebug($"Using system PATH Python: {_pythonPath}");
+            _logger?.LogDebug("Using system PATH Python: {PythonPath}", _pythonPath);
         }
 
         // Detect vspipe
         _vspipePath = FindVsPipe();
         if (_vspipePath != null)
         {
-            _logger?.LogDebug($"Found vspipe: {_vspipePath}");
+            _logger?.LogDebug("Found vspipe: {VspipePath}", _vspipePath);
         }
         else
         {
@@ -126,8 +126,8 @@ public class VapourSynthEnvironment : IVapourSynthEnvironment
         _pythonVersion = DetectPythonVersionSync();
         _vapourSynthVersion = DetectVapourSynthVersionSync();
 
-        _logger?.LogDebug($"Python version: {_pythonVersion ?? "unknown"}");
-        _logger?.LogDebug($"VapourSynth version: {_vapourSynthVersion ?? "unknown"}");
+        _logger?.LogDebug("Python version: {PythonVersion}", _pythonVersion ?? "unknown");
+        _logger?.LogDebug("VapourSynth version: {VapourSynthVersion}", _vapourSynthVersion ?? "unknown");
         _logger?.LogDebug("==========================================");
     }
 
@@ -240,7 +240,7 @@ public class VapourSynthEnvironment : IVapourSynthEnvironment
         }
         catch (Exception ex)
         {
-            _logger?.LogDebug($"Python version detection failed: {ex.Message}");
+            _logger?.LogWarning("Python version detection failed: {Message}", ex.Message);
         }
 
         return null;
@@ -279,7 +279,7 @@ public class VapourSynthEnvironment : IVapourSynthEnvironment
         }
         catch (Exception ex)
         {
-            _logger?.LogDebug($"VapourSynth version detection failed: {ex.Message}");
+            _logger?.LogWarning("VapourSynth version detection failed: {Message}", ex.Message);
         }
 
         return null;
