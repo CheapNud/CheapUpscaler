@@ -1,5 +1,5 @@
-using System.Diagnostics;
 using CheapHelpers.MediaProcessing.Models;
+using Microsoft.Extensions.Logging;
 
 namespace CheapUpscaler.Core.Services.RIFE;
 
@@ -14,19 +14,19 @@ public class RifeVariantDetector
     /// TensorRT is recommended for RTX GPUs (2000, 3000, 4000, 5000 series)
     /// Vulkan is recommended for all other GPUs
     /// </summary>
-    public static string DetectRecommendedVariant(HardwareCapabilities hardwareCapabilities)
+    public static string DetectRecommendedVariant(HardwareCapabilities hardwareCapabilities, ILogger? logger = null)
     {
         // RTX GPUs (2000, 3000, 4000, 5000 series) support TensorRT
         if (hardwareCapabilities.NvencAvailable && IsRtxGpu(hardwareCapabilities.GpuName))
         {
-            Debug.WriteLine($"Detected RTX GPU: {hardwareCapabilities.GpuName}");
-            Debug.WriteLine("Recommended RIFE variant: TensorRT (faster performance on RTX GPUs)");
+            logger?.LogDebug($"Detected RTX GPU: {hardwareCapabilities.GpuName}");
+            logger?.LogDebug("Recommended RIFE variant: TensorRT (faster performance on RTX GPUs)");
             return "TensorRT";
         }
 
         // Fallback to Vulkan for other GPUs (GTX, AMD, Intel, etc.)
-        Debug.WriteLine($"Detected GPU: {hardwareCapabilities.GpuName}");
-        Debug.WriteLine("Recommended RIFE variant: Vulkan (universal compatibility)");
+        logger?.LogDebug($"Detected GPU: {hardwareCapabilities.GpuName}");
+        logger?.LogDebug("Recommended RIFE variant: Vulkan (universal compatibility)");
         return "Vulkan";
     }
 
@@ -86,18 +86,18 @@ public class RifeVariantDetector
     /// <summary>
     /// Validate that RIFE executable exists for the given variant
     /// </summary>
-    public static bool ValidateVariantExecutable(string variant, string searchPath = ".")
+    public static bool ValidateVariantExecutable(string variant, string searchPath = ".", ILogger? logger = null)
     {
         var executableName = GetExecutableName(variant);
         var fullPath = Path.Combine(searchPath, executableName);
 
         if (File.Exists(fullPath))
         {
-            Debug.WriteLine($"Found RIFE executable: {fullPath}");
+            logger?.LogDebug($"Found RIFE executable: {fullPath}");
             return true;
         }
 
-        Debug.WriteLine($"RIFE executable not found: {fullPath}");
+        logger?.LogDebug($"RIFE executable not found: {fullPath}");
         return false;
     }
 
@@ -105,7 +105,7 @@ public class RifeVariantDetector
     /// Auto-detect available RIFE variants in a directory
     /// Returns list of available variants
     /// </summary>
-    public static List<string> DetectAvailableVariants(string searchPath = ".")
+    public static List<string> DetectAvailableVariants(string searchPath = ".", ILogger? logger = null)
     {
         var availableVariants = new List<string>();
 
@@ -113,19 +113,19 @@ public class RifeVariantDetector
         if (File.Exists(Path.Combine(searchPath, "rife-tensorrt.exe")))
         {
             availableVariants.Add("TensorRT");
-            Debug.WriteLine("Found RIFE TensorRT variant");
+            logger?.LogDebug("Found RIFE TensorRT variant");
         }
 
         // Check for Vulkan variant
         if (File.Exists(Path.Combine(searchPath, "rife-ncnn-vulkan.exe")))
         {
             availableVariants.Add("Vulkan");
-            Debug.WriteLine("Found RIFE Vulkan variant");
+            logger?.LogDebug("Found RIFE Vulkan variant");
         }
 
         if (availableVariants.Count == 0)
         {
-            Debug.WriteLine("No RIFE executables found in search path");
+            logger?.LogDebug("No RIFE executables found in search path");
         }
 
         return availableVariants;

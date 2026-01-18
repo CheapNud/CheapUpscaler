@@ -78,16 +78,19 @@ public class UpscaleProcessorService(
             Debug.WriteLine($"RIFE: Preferred model '{preferredModel}' not available, using '{modelName}' instead");
         }
 
+        // Auto-select engine based on available model files (ONNX = TensorRT, bin/param = NCNN)
+        var selectedEngine = rifeService.AutoSelectEngine();
+
         var options = new RifeOptions
         {
             InterpolationMultiplier = jobSettings.Multiplier,
             TargetFps = jobSettings.TargetFps,
-            Engine = RifeEngine.TensorRT,
+            Engine = selectedEngine,
             GpuId = 0,
             ModelName = modelName
         };
 
-        Debug.WriteLine($"RIFE: {jobSettings.Multiplier}x, Target FPS: {jobSettings.TargetFps}, Model: {options.ModelName}");
+        Debug.WriteLine($"RIFE: {jobSettings.Multiplier}x, Target FPS: {jobSettings.TargetFps}, Model: {options.ModelName}, Engine: {selectedEngine}");
 
         var ffmpegPath = !string.IsNullOrEmpty(appSettings.ToolPaths.FFmpegPath)
             ? appSettings.ToolPaths.FFmpegPath

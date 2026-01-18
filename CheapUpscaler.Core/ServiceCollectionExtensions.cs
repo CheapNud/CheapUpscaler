@@ -1,5 +1,5 @@
-using System.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using CheapUpscaler.Core.Services.VapourSynth;
 using CheapUpscaler.Core.Services.RIFE;
 using CheapUpscaler.Core.Services.RealCUGAN;
@@ -91,6 +91,7 @@ public static class ServiceCollectionExtensions
     /// <param name="configuredRifePath">User-configured RIFE path (null/empty = use auto-detection)</param>
     /// <param name="configuredPythonPath">User-configured Python path (null/empty = use SVP's Python)</param>
     /// <param name="svpDetection">SVP detection service for auto-detection fallback</param>
+    /// <param name="logger">Optional logger for diagnostic output</param>
     /// <returns>Tuple of (rifePath, pythonPath) - may be empty if no RIFE found</returns>
     /// <remarks>
     /// Detection priority:
@@ -101,17 +102,18 @@ public static class ServiceCollectionExtensions
     public static (string rifePath, string pythonPath) ResolveRifePaths(
         string? configuredRifePath,
         string? configuredPythonPath,
-        SvpDetectionService svpDetection)
+        SvpDetectionService svpDetection,
+        ILogger? logger = null)
     {
         // 1. Check user-configured path first
         if (!string.IsNullOrEmpty(configuredRifePath))
         {
             if (Directory.Exists(configuredRifePath))
             {
-                Debug.WriteLine($"[RIFE] Using configured path: {configuredRifePath}");
+                logger?.LogDebug("[RIFE] Using configured path: {RifePath}", configuredRifePath);
                 return (configuredRifePath, configuredPythonPath ?? "");
             }
-            Debug.WriteLine($"[RIFE] WARNING: Configured path does not exist: {configuredRifePath}");
+            logger?.LogWarning("[RIFE] Configured path does not exist: {RifePath}", configuredRifePath);
         }
 
         // 2. Fall back to SVP auto-detection
@@ -119,13 +121,12 @@ public static class ServiceCollectionExtensions
         if (svp.IsInstalled && !string.IsNullOrEmpty(svp.RifePath))
         {
             var pythonPath = !string.IsNullOrEmpty(svp.PythonPath) ? svp.PythonPath : "";
-            Debug.WriteLine($"[RIFE] Using SVP installation: {svp.RifePath}");
+            logger?.LogDebug("[RIFE] Using SVP installation: {RifePath}", svp.RifePath);
             return (svp.RifePath, pythonPath);
         }
 
         // 3. RIFE not available
-        Debug.WriteLine("[RIFE] WARNING: No RIFE installation found.");
-        Debug.WriteLine("[RIFE] To enable RIFE: Install SVP 4 Pro (https://www.svp-team.com/get/) or configure RifeFolderPath in Settings.");
+        logger?.LogWarning("[RIFE] No RIFE installation found. Install SVP 4 Pro or configure RifeFolderPath in Settings.");
         return ("", "");
     }
 }

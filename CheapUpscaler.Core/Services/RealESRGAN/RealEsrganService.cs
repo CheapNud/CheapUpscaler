@@ -4,6 +4,7 @@ using System.Text.RegularExpressions;
 using CheapUpscaler.Core.Models;
 using CheapUpscaler.Core.Services.VapourSynth;
 using CheapHelpers.MediaProcessing.Services.Utilities;
+using Microsoft.Extensions.Logging;
 
 namespace CheapUpscaler.Core.Services.RealESRGAN;
 
@@ -15,11 +16,13 @@ namespace CheapUpscaler.Core.Services.RealESRGAN;
 public class RealEsrganService
 {
     private readonly IVapourSynthEnvironment _environment;
+    private readonly ILogger<RealEsrganService>? _logger;
 
-    public RealEsrganService(IVapourSynthEnvironment environment)
+    public RealEsrganService(IVapourSynthEnvironment environment, ILogger<RealEsrganService>? logger = null)
     {
         _environment = environment;
-        Debug.WriteLine($"RealEsrganService initialized with Python: {_environment.PythonPath}");
+        _logger = logger;
+        _logger?.LogDebug("RealEsrganService initialized with Python: {PythonPath}", _environment.PythonPath);
     }
 
     /// <summary>
@@ -37,16 +40,16 @@ public class RealEsrganService
 
             if (exitCode != 0 || !output.Contains("OK"))
             {
-                Debug.WriteLine($"vsrealesrgan validation failed: {errorText}");
+                _logger?.LogWarning("vsrealesrgan validation failed: {Error}", errorText);
                 return false;
             }
 
-            Debug.WriteLine("vsrealesrgan installation validated successfully");
+            _logger?.LogDebug("vsrealesrgan installation validated successfully");
             return true;
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"Error validating vsrealesrgan installation: {ex.Message}");
+            _logger?.LogWarning("Error validating vsrealesrgan installation: {Message}", ex.Message);
             return false;
         }
     }
@@ -70,8 +73,8 @@ public class RealEsrganService
         if (!string.IsNullOrEmpty(outputDir))
             Directory.CreateDirectory(outputDir);
 
-        Debug.WriteLine($"Starting Real-ESRGAN upscaling: {inputVideoPath} -> {outputVideoPath}");
-        Debug.WriteLine($"Model: {options.ModelName}, Scale: {options.ScaleFactor}x, Tile: {options.TileSize}px");
+        _logger?.LogDebug("Starting Real-ESRGAN upscaling: {Input} -> {Output}", inputVideoPath, outputVideoPath);
+        _logger?.LogDebug("Model: {Model}, Scale: {Scale}x, Tile: {TileSize}px", options.ModelName, options.ScaleFactor, options.TileSize);
 
         // Check for vspipe (VapourSynth's command-line tool)
         var vspipePath = _environment.VsPipePath;
@@ -81,7 +84,8 @@ public class RealEsrganService
         }
 
         // Create VapourSynth script for Real-ESRGAN
-        var tempScriptPath = Path.Combine(Path.GetTempPath(), $"realesrgan_{Guid.NewGuid().ToString()[..8]}.vpy");
+        using var tempManager = new TemporaryFileManager();
+        var tempScriptPath = tempManager.GetTempFilePath("realesrgan", ".vpy");
 
         try
         {
@@ -89,10 +93,10 @@ public class RealEsrganService
             var scriptContent = GenerateRealEsrganScript(inputVideoPath, options);
             await File.WriteAllTextAsync(tempScriptPath, scriptContent, cancellationToken);
 
-            Debug.WriteLine($"Created VapourSynth script: {tempScriptPath}");
+            _logger?.LogDebug("Created VapourSynth script: {ScriptPath}", tempScriptPath);
 
             // Test if the script loads properly (important for first-time model downloads)
-            Debug.WriteLine("Testing VapourSynth script (may download model on first run)...");
+            _logger?.LogDebug("Testing VapourSynth script (may download model on first run)...");
 
             var testProcess = new ProcessStartInfo
             {
@@ -119,18 +123,18 @@ public class RealEsrganService
                     }
                     catch (OperationCanceledException)
                     {
-                        Debug.WriteLine("VapourSynth script test timed out after 10 minutes");
+                        _logger?.LogWarning("VapourSynth script test timed out after 10 minutes");
                         try { test.Kill(); } catch { }
                         throw new TimeoutException("VapourSynth script test timed out. Model download may have failed.");
                     }
 
                     if (test.ExitCode != 0)
                     {
-                        Debug.WriteLine($"VapourSynth script test failed: {testError}");
+                        _logger?.LogError("VapourSynth script test failed: {Error}", testError);
                         throw new InvalidOperationException($"Failed to load VapourSynth script: {testError}");
                     }
 
-                    Debug.WriteLine($"VapourSynth script validated: {testOutput}");
+                    _logger?.LogDebug("VapourSynth script validated: {Output}", testOutput);
                 }
             }
 
@@ -148,7 +152,7 @@ public class RealEsrganService
             }
 
             // Run vspipe -> FFmpeg pipeline
-            Debug.WriteLine("Starting Real-ESRGAN processing pipeline...");
+            _logger?.LogDebug("Starting Real-ESRGAN processing pipeline...");
 
             var vspipeProcess = new ProcessStartInfo
             {
@@ -172,7 +176,7 @@ public class RealEsrganService
                 CreateNoWindow = true
             };
 
-            Debug.WriteLine($"Pipeline: {vspipeProcess.FileName} {vspipeProcess.Arguments} | {ffmpegProcess.FileName} {ffmpegProcess.Arguments}");
+            _logger?.LogDebug("Pipeline: {VspipeCmd} {VspipeArgs} | {FfmpegCmd} {FfmpegArgs}", vspipeProcess.FileName, vspipeProcess.Arguments, ffmpegProcess.FileName, ffmpegProcess.Arguments);
 
             // Start both processes and pipe vspipe output to ffmpeg input
             using var vspipe = SysProcess.Start(vspipeProcess);
@@ -186,13 +190,13 @@ public class RealEsrganService
             // Register cancellation handlers for graceful shutdown
             var vspipeCancellation = cancellationToken.Register(async () =>
             {
-                Debug.WriteLine("Real-ESRGAN cancelled - shutting down vspipe...");
+                _logger?.LogDebug("Real-ESRGAN cancelled - shutting down vspipe...");
                 await ProcessManager.GracefulShutdownAsync(vspipe, gracefulTimeoutMs: 3000, processName: "vspipe (Real-ESRGAN)");
             });
 
             var ffmpegCancellation = cancellationToken.Register(async () =>
             {
-                Debug.WriteLine("Real-ESRGAN cancelled - shutting down ffmpeg...");
+                _logger?.LogDebug("Real-ESRGAN cancelled - shutting down ffmpeg...");
                 await ProcessManager.GracefulShutdownAsync(ffmpeg, gracefulTimeoutMs: 2000, processName: "ffmpeg (Real-ESRGAN)");
             });
 
@@ -208,7 +212,7 @@ public class RealEsrganService
                     }
                     catch (OperationCanceledException)
                     {
-                        Debug.WriteLine("[Real-ESRGAN] Pipe operation cancelled");
+                        _logger?.LogDebug("[Real-ESRGAN] Pipe operation cancelled");
                     }
                 }, cancellationToken);
 
@@ -220,7 +224,7 @@ public class RealEsrganService
 
                     while ((line = await vspipe.StandardError.ReadLineAsync(cancellationToken)) != null)
                     {
-                        Debug.WriteLine($"[vspipe] {line}");
+                        _logger?.LogDebug("[vspipe] {Line}", line);
 
                         var match = framePattern.Match(line);
                         if (match.Success &&
@@ -239,7 +243,7 @@ public class RealEsrganService
                     string? line;
                     while ((line = await ffmpeg.StandardError.ReadLineAsync(cancellationToken)) != null)
                     {
-                        Debug.WriteLine($"[ffmpeg] {line}");
+                        _logger?.LogDebug("[ffmpeg] {Line}", line);
                     }
                 }, cancellationToken);
 
@@ -254,7 +258,7 @@ public class RealEsrganService
             }
             catch (OperationCanceledException)
             {
-                Debug.WriteLine("Real-ESRGAN processing cancelled");
+                _logger?.LogDebug("Real-ESRGAN processing cancelled");
                 throw;
             }
             finally
@@ -267,28 +271,21 @@ public class RealEsrganService
 
             if (!success)
             {
-                Debug.WriteLine($"Processing failed - vspipe: {vspipe.ExitCode}, ffmpeg: {ffmpeg.ExitCode}");
+                _logger?.LogError("Processing failed - vspipe exit: {VspipeExitCode}, ffmpeg exit: {FfmpegExitCode}", vspipe.ExitCode, ffmpeg.ExitCode);
             }
             else
             {
-                Debug.WriteLine($"Real-ESRGAN upscaling completed successfully: {outputVideoPath}");
+                _logger?.LogDebug("Real-ESRGAN upscaling completed successfully: {OutputPath}", outputVideoPath);
             }
 
             return success;
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"Real-ESRGAN upscaling failed: {ex.Message}");
+            _logger?.LogError(ex, "Real-ESRGAN upscaling failed: {Message}", ex.Message);
             throw new InvalidOperationException($"Real-ESRGAN processing failed: {ex.Message}", ex);
         }
-        finally
-        {
-            // Clean up temp script
-            if (File.Exists(tempScriptPath))
-            {
-                try { File.Delete(tempScriptPath); } catch { }
-            }
-        }
+        // Temp script cleanup handled by TemporaryFileManager.Dispose()
     }
 
     /// <summary>
@@ -391,7 +388,7 @@ clip.set_output()
             // Check if Python is available
             if (!await _environment.IsPythonAvailableAsync())
             {
-                Debug.WriteLine("Python not found or not working");
+                _logger?.LogWarning("Python not found or not working");
                 return false;
             }
 
@@ -400,7 +397,7 @@ clip.set_output()
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"Real-ESRGAN availability check failed: {ex.Message}");
+            _logger?.LogWarning("Real-ESRGAN availability check failed: {Message}", ex.Message);
             return false;
         }
     }

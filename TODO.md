@@ -177,7 +177,9 @@ Issues from PR #2 review and code audit. See: https://github.com/CheapNud/CheapU
 
 - [x] **Add constants for magic strings** - `KnownDlls` class in DependencyChecker.cs
 - [x] **Safe path handling** - Validated paths before use in GenerateSvpRifeScript
-- [ ] **Use proper logging** - Replace `Debug.WriteLine` with `ILogger<T>` injection
+- [x] **Use proper logging** - Replace `Debug.WriteLine` with `ILogger<T>` injection
+  - All services use `ILogger<T>?` as optional constructor parameter
+  - RifeVariantDetector static methods accept `ILogger?` parameter
 - [x] **Add XML documentation** - SVP integration explained in ServiceCollectionExtensions
 
 ### Dead Code Cleanup
@@ -190,16 +192,20 @@ Issues from PR #2 review and code audit. See: https://github.com/CheapNud/CheapU
 
 ### Temp File Management
 
-- [ ] **Use `TemporaryFileManager` from CheapHelpers.MediaProcessing** for VapourSynth script files
-  - Currently: `Path.Combine(Path.GetTempPath(), $"svp_rife_{Guid}.vpy")`
-  - Should: Use `TemporaryFileManager.GetTempFilePath("svp_rife", ".vpy")` with proper cleanup
+- [x] **Use `TemporaryFileManager` from CheapHelpers.MediaProcessing** for VapourSynth script files
+  - Uses `using var tempManager = new TemporaryFileManager()` with `GetTempFilePath("svp_rife", ".vpy")`
+  - Automatic cleanup via `IDisposable` pattern
 
 ### Future Enhancement Ideas
 
 - [x] **Model detection** - `RifeInterpolationService.GetAvailableModels()` scans ONNX files
   - `UpscaleProcessorService.ProcessRifeAsync()` pre-validates and falls back to available model
-- [ ] **Engine auto-selection** - TensorRT if ONNX available, NCNN_VK if only .bin/.param
-- [ ] **Integrate `DependencyChecker` results** - Use detected RIFE path to initialize service at runtime
+- [x] **Engine auto-selection** - TensorRT if ONNX available, NCNN_VK if only .bin/.param
+  - `RifeInterpolationService.AutoSelectEngine()` and `GetAvailableEngines()` methods
+  - `UpscaleProcessorService.ProcessRifeAsync()` uses auto-selection
+- [x] **Integrate `DependencyChecker` results** - Use detected RIFE path to initialize service at runtime
+  - `DependencyChecker.GetDetectedRifePath()` returns SVP or standalone RIFE path
+  - `DependencyChecker.GetDetectedPythonPath()` returns SVP or system Python path
 
 ---
 

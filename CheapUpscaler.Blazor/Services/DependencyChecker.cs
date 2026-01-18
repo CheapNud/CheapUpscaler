@@ -391,4 +391,57 @@ public class DependencyChecker(
             return null;
         }
     }
+
+    /// <summary>
+    /// Get the auto-detected RIFE folder path for use in Settings.
+    /// Returns SVP's RIFE path if installed, or first found standalone RIFE location.
+    /// </summary>
+    public string? GetDetectedRifePath()
+    {
+        // 1. Check SVP installation first (preferred)
+        var svp = svpDetectionService.DetectSvpInstallation();
+        if (svp.IsInstalled && !string.IsNullOrEmpty(svp.RifePath))
+        {
+            var rifeDll = Path.Combine(svp.RifePath, KnownDlls.RifeVs);
+            var rifeAltDll = Path.Combine(svp.RifePath, KnownDlls.Rife);
+            if (File.Exists(rifeDll) || File.Exists(rifeAltDll))
+            {
+                return svp.RifePath;
+            }
+        }
+
+        // 2. Check standalone RIFE locations
+        var searchPaths = new[]
+        {
+            @"C:\RIFE",
+            @"C:\Program Files\RIFE",
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RIFE")
+        };
+
+        foreach (var searchPath in searchPaths)
+        {
+            if (Directory.Exists(searchPath) &&
+                (File.Exists(Path.Combine(searchPath, "rife-ncnn-vulkan.exe")) ||
+                 File.Exists(Path.Combine(searchPath, "rife-tensorrt.exe"))))
+            {
+                return searchPath;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Get the auto-detected Python path for use in Settings.
+    /// </summary>
+    public string? GetDetectedPythonPath()
+    {
+        var svp = svpDetectionService.DetectSvpInstallation();
+        if (svp.IsInstalled && !string.IsNullOrEmpty(svp.PythonPath))
+        {
+            return svp.PythonPath;
+        }
+
+        return vapourSynthEnvironment.PythonPath;
+    }
 }

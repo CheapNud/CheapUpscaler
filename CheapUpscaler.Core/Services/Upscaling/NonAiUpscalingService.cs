@@ -1,8 +1,9 @@
 using SysProcess = System.Diagnostics.Process;
-using FFMpegCore;
 using System.Diagnostics;
+using FFMpegCore;
 using CheapUpscaler.Core.Models;
 using CheapHelpers.MediaProcessing.Services;
+using Microsoft.Extensions.Logging;
 
 namespace CheapUpscaler.Core.Services.Upscaling;
 
@@ -16,14 +17,16 @@ namespace CheapUpscaler.Core.Services.Upscaling;
 public class NonAiUpscalingService
 {
     private readonly SvpDetectionService _svpDetection;
+    private readonly ILogger<NonAiUpscalingService>? _logger;
 
-    public NonAiUpscalingService(SvpDetectionService svpDetection)
+    public NonAiUpscalingService(SvpDetectionService svpDetection, ILogger<NonAiUpscalingService>? logger = null)
     {
         _svpDetection = svpDetection;
+        _logger = logger;
         ConfigureFFmpegPath();
     }
 
-    public NonAiUpscalingService() : this(new SvpDetectionService())
+    public NonAiUpscalingService() : this(new SvpDetectionService(), null)
     {
     }
 
@@ -42,7 +45,7 @@ public class NonAiUpscalingService
                 var ffprobeInSameDir = Path.Combine(directory, "ffprobe.exe");
                 if (File.Exists(ffprobeInSameDir))
                 {
-                    Debug.WriteLine($"[NonAiUpscalingService] Using auto-detected FFmpeg: {directory}");
+                    _logger?.LogDebug("[NonAiUpscalingService] Using auto-detected FFmpeg: {Directory}", directory);
                     GlobalFFOptions.Configure(new FFOptions { BinaryFolder = directory });
                 }
             }
@@ -64,17 +67,17 @@ public class NonAiUpscalingService
         // Validate scale factor
         if (scaleFactor < 2 || scaleFactor > 4)
         {
-            Debug.WriteLine($"ERROR: xBR scale factor must be 2, 3, or 4 (got {scaleFactor})");
+            _logger?.LogWarning("[xBR] Scale factor must be 2, 3, or 4 (got {ScaleFactor})", scaleFactor);
             return false;
         }
 
-        Debug.WriteLine($"[xBR] Starting {scaleFactor}x upscale: {inputPath} -> {outputPath}");
+        _logger?.LogDebug("[xBR] Starting {Scale}x upscale: {Input} -> {Output}", scaleFactor, inputPath, outputPath);
 
         try
         {
             var mediaInfo = await FFProbe.AnalyseAsync(inputPath, cancellationToken: cancellationToken);
-            Debug.WriteLine($"[xBR] Input: {mediaInfo.PrimaryVideoStream?.Width}x{mediaInfo.PrimaryVideoStream?.Height}");
-            Debug.WriteLine($"[xBR] Duration: {mediaInfo.Duration.TotalSeconds:F1} seconds");
+            _logger?.LogDebug("[xBR] Input: {Width}x{Height}", mediaInfo.PrimaryVideoStream?.Width, mediaInfo.PrimaryVideoStream?.Height);
+            _logger?.LogDebug("[xBR] Duration: {Duration:F1} seconds", mediaInfo.Duration.TotalSeconds);
 
             var processor = FFMpegArguments
                 .FromFileInput(inputPath)
@@ -94,17 +97,17 @@ public class NonAiUpscalingService
 
             await processor.CancellableThrough(cancellationToken).ProcessAsynchronously();
 
-            Debug.WriteLine($"[xBR] Upscale complete: {outputPath}");
+            _logger?.LogDebug("[xBR] Upscale complete: {Output}", outputPath);
             return true;
         }
         catch (OperationCanceledException)
         {
-            Debug.WriteLine("[xBR] Upscale cancelled");
+            _logger?.LogDebug("[xBR] Upscale cancelled");
             return false;
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[xBR] Upscale error: {ex.Message}");
+            _logger?.LogError(ex, "[xBR] Upscale error: {Message}", ex.Message);
             return false;
         }
     }
@@ -124,17 +127,17 @@ public class NonAiUpscalingService
         // Validate scale factor
         if (scaleFactor < 2 || scaleFactor > 4)
         {
-            Debug.WriteLine($"ERROR: Lanczos scale factor must be 2, 3, or 4 (got {scaleFactor})");
+            _logger?.LogWarning("[Lanczos] Scale factor must be 2, 3, or 4 (got {ScaleFactor})", scaleFactor);
             return false;
         }
 
-        Debug.WriteLine($"[Lanczos] Starting {scaleFactor}x upscale: {inputPath} -> {outputPath}");
+        _logger?.LogDebug("[Lanczos] Starting {Scale}x upscale: {Input} -> {Output}", scaleFactor, inputPath, outputPath);
 
         try
         {
             var mediaInfo = await FFProbe.AnalyseAsync(inputPath, cancellationToken: cancellationToken);
-            Debug.WriteLine($"[Lanczos] Input: {mediaInfo.PrimaryVideoStream?.Width}x{mediaInfo.PrimaryVideoStream?.Height}");
-            Debug.WriteLine($"[Lanczos] Duration: {mediaInfo.Duration.TotalSeconds:F1} seconds");
+            _logger?.LogDebug("[Lanczos] Input: {Width}x{Height}", mediaInfo.PrimaryVideoStream?.Width, mediaInfo.PrimaryVideoStream?.Height);
+            _logger?.LogDebug("[Lanczos] Duration: {Duration:F1} seconds", mediaInfo.Duration.TotalSeconds);
 
             var processor = FFMpegArguments
                 .FromFileInput(inputPath)
@@ -154,17 +157,17 @@ public class NonAiUpscalingService
 
             await processor.CancellableThrough(cancellationToken).ProcessAsynchronously();
 
-            Debug.WriteLine($"[Lanczos] Upscale complete: {outputPath}");
+            _logger?.LogDebug("[Lanczos] Upscale complete: {Output}", outputPath);
             return true;
         }
         catch (OperationCanceledException)
         {
-            Debug.WriteLine("[Lanczos] Upscale cancelled");
+            _logger?.LogDebug("[Lanczos] Upscale cancelled");
             return false;
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[Lanczos] Upscale error: {ex.Message}");
+            _logger?.LogError(ex, "[Lanczos] Upscale error: {Message}", ex.Message);
             return false;
         }
     }
@@ -184,17 +187,17 @@ public class NonAiUpscalingService
         // Validate scale factor
         if (scaleFactor < 2 || scaleFactor > 4)
         {
-            Debug.WriteLine($"ERROR: HQx scale factor must be 2, 3, or 4 (got {scaleFactor})");
+            _logger?.LogWarning("[HQx] Scale factor must be 2, 3, or 4 (got {ScaleFactor})", scaleFactor);
             return false;
         }
 
-        Debug.WriteLine($"[HQx] Starting {scaleFactor}x upscale: {inputPath} -> {outputPath}");
+        _logger?.LogDebug("[HQx] Starting {Scale}x upscale: {Input} -> {Output}", scaleFactor, inputPath, outputPath);
 
         try
         {
             var mediaInfo = await FFProbe.AnalyseAsync(inputPath, cancellationToken: cancellationToken);
-            Debug.WriteLine($"[HQx] Input: {mediaInfo.PrimaryVideoStream?.Width}x{mediaInfo.PrimaryVideoStream?.Height}");
-            Debug.WriteLine($"[HQx] Duration: {mediaInfo.Duration.TotalSeconds:F1} seconds");
+            _logger?.LogDebug("[HQx] Input: {Width}x{Height}", mediaInfo.PrimaryVideoStream?.Width, mediaInfo.PrimaryVideoStream?.Height);
+            _logger?.LogDebug("[HQx] Duration: {Duration:F1} seconds", mediaInfo.Duration.TotalSeconds);
 
             var processor = FFMpegArguments
                 .FromFileInput(inputPath)
@@ -214,17 +217,17 @@ public class NonAiUpscalingService
 
             await processor.CancellableThrough(cancellationToken).ProcessAsynchronously();
 
-            Debug.WriteLine($"[HQx] Upscale complete: {outputPath}");
+            _logger?.LogDebug("[HQx] Upscale complete: {Output}", outputPath);
             return true;
         }
         catch (OperationCanceledException)
         {
-            Debug.WriteLine("[HQx] Upscale cancelled");
+            _logger?.LogDebug("[HQx] Upscale cancelled");
             return false;
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[HQx] Upscale error: {ex.Message}");
+            _logger?.LogError(ex, "[HQx] Upscale error: {Message}", ex.Message);
             return false;
         }
     }
@@ -240,7 +243,7 @@ public class NonAiUpscalingService
         IProgress<double>? progress = null,
         CancellationToken cancellationToken = default)
     {
-        Debug.WriteLine($"[NonAI Upscaling] Algorithm: {algorithm}, Scale: {scaleFactor}x");
+        _logger?.LogDebug("[NonAI Upscaling] Algorithm: {Algorithm}, Scale: {Scale}x", algorithm, scaleFactor);
 
         return algorithm.ToLower() switch
         {
@@ -278,13 +281,13 @@ public class NonAiUpscalingService
             await process.WaitForExitAsync();
 
             var supported = outputText.Contains($" {filterName} ", StringComparison.OrdinalIgnoreCase);
-            Debug.WriteLine($"[NonAI Upscaling] Filter '{filterName}' supported: {supported}");
+            _logger?.LogDebug("[NonAI Upscaling] Filter '{FilterName}' supported: {Supported}", filterName, supported);
 
             return supported;
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[NonAI Upscaling] Error checking filter support: {ex.Message}");
+            _logger?.LogWarning("[NonAI Upscaling] Error checking filter support: {Message}", ex.Message);
             return false;
         }
     }

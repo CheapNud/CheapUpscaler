@@ -3,6 +3,8 @@ using System.Diagnostics;
 using System.Text.RegularExpressions;
 using CheapUpscaler.Core.Models;
 using CheapUpscaler.Core.Services.VapourSynth;
+using CheapHelpers.MediaProcessing.Services.Utilities;
+using Microsoft.Extensions.Logging;
 
 namespace CheapUpscaler.Core.Services.RealCUGAN;
 
@@ -15,11 +17,13 @@ namespace CheapUpscaler.Core.Services.RealCUGAN;
 public class RealCuganService
 {
     private readonly IVapourSynthEnvironment _environment;
+    private readonly ILogger<RealCuganService>? _logger;
 
-    public RealCuganService(IVapourSynthEnvironment environment)
+    public RealCuganService(IVapourSynthEnvironment environment, ILogger<RealCuganService>? logger = null)
     {
         _environment = environment;
-        Debug.WriteLine($"RealCuganService initialized with Python: {_environment.PythonPath}");
+        _logger = logger;
+        _logger?.LogDebug("RealCuganService initialized with Python: {PythonPath}", _environment.PythonPath);
     }
 
     /// <summary>
@@ -37,16 +41,16 @@ public class RealCuganService
 
             if (exitCode != 0 || !output.Contains("OK"))
             {
-                Debug.WriteLine($"vs-mlrt validation failed: {errorText}");
+                _logger?.LogWarning("vs-mlrt validation failed: {Error}", errorText);
                 return false;
             }
 
-            Debug.WriteLine("vs-mlrt installation validated successfully");
+            _logger?.LogDebug("vs-mlrt installation validated successfully");
             return true;
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"Error validating vs-mlrt installation: {ex.Message}");
+            _logger?.LogWarning("Error validating vs-mlrt installation: {Message}", ex.Message);
             return false;
         }
     }
@@ -74,8 +78,8 @@ public class RealCuganService
         if (!string.IsNullOrEmpty(outputDir))
             Directory.CreateDirectory(outputDir);
 
-        Debug.WriteLine($"Starting Real-CUGAN upscaling: {inputVideoPath} -> {outputVideoPath}");
-        Debug.WriteLine($"Scale: {options.Scale}x, Noise: {options.Noise}, Backend: {RealCuganOptions.GetBackendDisplayName(options.Backend)}, FP16: {options.UseFp16}");
+        _logger?.LogDebug("Starting Real-CUGAN upscaling: {Input} -> {Output}", inputVideoPath, outputVideoPath);
+        _logger?.LogDebug("Scale: {Scale}x, Noise: {Noise}, Backend: {Backend}, FP16: {UseFp16}", options.Scale, options.Noise, RealCuganOptions.GetBackendDisplayName(options.Backend), options.UseFp16);
 
         // Check for vspipe (VapourSynth's command-line tool)
         var vspipePath = _environment.VsPipePath;
@@ -85,7 +89,8 @@ public class RealCuganService
         }
 
         // Create VapourSynth script for Real-CUGAN
-        var tempScriptPath = Path.Combine(Path.GetTempPath(), $"realcugan_{Guid.NewGuid().ToString()[..8]}.vpy");
+        using var tempManager = new TemporaryFileManager();
+        var tempScriptPath = tempManager.GetTempFilePath("realcugan", ".vpy");
 
         try
         {
@@ -93,10 +98,10 @@ public class RealCuganService
             var scriptContent = GenerateRealCuganScript(inputVideoPath, options);
             await File.WriteAllTextAsync(tempScriptPath, scriptContent, cancellationToken);
 
-            Debug.WriteLine($"Created VapourSynth script: {tempScriptPath}");
+            _logger?.LogDebug("Created VapourSynth script: {ScriptPath}", tempScriptPath);
 
             // Test if the script loads properly (important for first-time model downloads)
-            Debug.WriteLine("Testing VapourSynth script (may download model on first run)...");
+            _logger?.LogDebug("Testing VapourSynth script (may download model on first run)...");
 
             var testProcess = new ProcessStartInfo
             {
@@ -121,7 +126,7 @@ public class RealCuganService
                         if (!string.IsNullOrEmpty(e.Data))
                         {
                             testOutputBuilder.AppendLine(e.Data);
-                            Debug.WriteLine($"[VapourSynth] {e.Data}");
+                            _logger?.LogDebug("[VapourSynth] {Data}", e.Data);
                         }
                     };
 
@@ -130,7 +135,7 @@ public class RealCuganService
                         if (!string.IsNullOrEmpty(e.Data))
                         {
                             testErrorBuilder.AppendLine(e.Data);
-                            Debug.WriteLine($"[VapourSynth Error] {e.Data}");
+                            _logger?.LogDebug("[VapourSynth stderr] {Data}", e.Data);
                         }
                     };
 
@@ -145,7 +150,7 @@ public class RealCuganService
                     }
                     catch (OperationCanceledException)
                     {
-                        Debug.WriteLine("VapourSynth script test timed out after 10 minutes");
+                        _logger?.LogWarning("VapourSynth script test timed out after 10 minutes");
                         try { test.Kill(); } catch { }
                         throw new TimeoutException("VapourSynth script test timed out. Model download may have failed.");
                     }
@@ -160,7 +165,7 @@ public class RealCuganService
 
                     if (!scriptValid)
                     {
-                        Debug.WriteLine($"VapourSynth script validation failed - no valid video info in output");
+                        _logger?.LogWarning("VapourSynth script validation failed - no valid video info in output");
 
                         // Check for Python errors
                         bool hasPythonError = testError.Contains("Error:") ||
@@ -180,7 +185,7 @@ public class RealCuganService
                              testError.Contains("nvinfer") ||
                              testError.Contains("errno 126")))
                         {
-                            Debug.WriteLine("TensorRT not available - falling back to CUDA backend (ORT_CUDA)");
+                            _logger?.LogInformation("TensorRT not available - falling back to CUDA backend (ORT_CUDA)");
 
                             // Retry with CUDA backend
                             var fallbackOptions = new RealCuganOptions
@@ -207,7 +212,7 @@ public class RealCuganService
                     }
                     else
                     {
-                        Debug.WriteLine($"VapourSynth script validated successfully");
+                        _logger?.LogDebug("VapourSynth script validated successfully");
                     }
                 }
             }
@@ -226,7 +231,7 @@ public class RealCuganService
             }
 
             // Run vspipe -> FFmpeg pipeline
-            Debug.WriteLine("Starting Real-CUGAN processing pipeline...");
+            _logger?.LogDebug("Starting Real-CUGAN processing pipeline...");
 
             var vspipeProcess = new ProcessStartInfo
             {
@@ -250,7 +255,7 @@ public class RealCuganService
                 CreateNoWindow = true
             };
 
-            Debug.WriteLine($"Pipeline: {vspipeProcess.FileName} {vspipeProcess.Arguments} | {ffmpegProcess.FileName} {ffmpegProcess.Arguments}");
+            _logger?.LogDebug("Pipeline: {VspipeCmd} {VspipeArgs} | {FfmpegCmd} {FfmpegArgs}", vspipeProcess.FileName, vspipeProcess.Arguments, ffmpegProcess.FileName, ffmpegProcess.Arguments);
 
             // Start both processes and pipe vspipe output to ffmpeg input
             using var vspipe = SysProcess.Start(vspipeProcess);
@@ -276,7 +281,7 @@ public class RealCuganService
 
                 while ((line = await vspipe.StandardError.ReadLineAsync(cancellationToken)) != null)
                 {
-                    Debug.WriteLine($"[vspipe] {line}");
+                    _logger?.LogDebug("[vspipe] {Line}", line);
 
                     var match = framePattern.Match(line);
                     if (match.Success &&
@@ -295,7 +300,7 @@ public class RealCuganService
                 string? line;
                 while ((line = await ffmpeg.StandardError.ReadLineAsync(cancellationToken)) != null)
                 {
-                    Debug.WriteLine($"[ffmpeg] {line}");
+                    _logger?.LogDebug("[ffmpeg] {Line}", line);
                 }
             }, cancellationToken);
 
@@ -312,28 +317,21 @@ public class RealCuganService
 
             if (!success)
             {
-                Debug.WriteLine($"Processing failed - vspipe: {vspipe.ExitCode}, ffmpeg: {ffmpeg.ExitCode}");
+                _logger?.LogError("Processing failed - vspipe exit: {VspipeExitCode}, ffmpeg exit: {FfmpegExitCode}", vspipe.ExitCode, ffmpeg.ExitCode);
             }
             else
             {
-                Debug.WriteLine($"Real-CUGAN upscaling completed successfully: {outputVideoPath}");
+                _logger?.LogDebug("Real-CUGAN upscaling completed successfully: {OutputPath}", outputVideoPath);
             }
 
             return success;
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"Real-CUGAN upscaling failed: {ex.Message}");
+            _logger?.LogError(ex, "Real-CUGAN upscaling failed: {Message}", ex.Message);
             throw new InvalidOperationException($"Real-CUGAN processing failed: {ex.Message}", ex);
         }
-        finally
-        {
-            // Clean up temp script
-            if (File.Exists(tempScriptPath))
-            {
-                try { File.Delete(tempScriptPath); } catch { }
-            }
-        }
+        // Temp script cleanup handled by TemporaryFileManager.Dispose()
     }
 
     /// <summary>
@@ -440,7 +438,7 @@ clip.set_output()
             // Check if Python is available
             if (!await _environment.IsPythonAvailableAsync())
             {
-                Debug.WriteLine("Python not found or not working");
+                _logger?.LogWarning("Python not found or not working");
                 return false;
             }
 
@@ -449,7 +447,7 @@ clip.set_output()
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"Real-CUGAN availability check failed: {ex.Message}");
+            _logger?.LogWarning("Real-CUGAN availability check failed: {Message}", ex.Message);
             return false;
         }
     }
