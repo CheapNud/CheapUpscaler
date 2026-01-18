@@ -861,26 +861,51 @@ public class RifeInterpolationService
 
         var pluginPath = Path.Combine(_rifeFolderPath, "rife_vs.dll");
 
-        // Map our model names to SVP's expected format (model ID used by vsmlrt)
-        var modelId = options.ModelName switch
+        // SVP model path for ONNX files
+        var svpModelPath = Path.Combine(_rifeFolderPath, "models");
+        var rifeModelDir = Path.Combine(svpModelPath, "rife");
+
+        // Map model names to (modelId, onnxFilename) - validate file exists before TensorRT compilation
+        var (modelId, modelFilename) = options.ModelName switch
         {
-            "rife-v4.6" => 46,
-            "rife-v4.14" => 414,
-            "rife-v4.15" => 415,
-            "rife-v4.16-lite" => 416,
-            "rife-v4.17" => 417,
-            "rife-v4.18" => 418,
-            "rife-v4.20" => 420,
-            "rife-v4.21" => 421,
-            "rife-v4.22" => 422,
-            "rife-v4.22-lite" => 422,
-            "rife-v4.25" => 425,
-            "rife-v4.25-lite" => 425,
-            "rife-v4.26" => 426,
-            "rife-UHD" => 49,
-            "rife-anime" => 48,
-            _ => 46  // Default to v4.6 which is commonly available
+            "rife-v4.6" => (46, "rife_v4.6.onnx"),
+            "rife-v4.14" => (414, "rife_v4.14.onnx"),
+            "rife-v4.15" => (415, "rife_v4.15.onnx"),
+            "rife-v4.16-lite" => (416, "rife_v4.16_lite.onnx"),
+            "rife-v4.17" => (417, "rife_v4.17.onnx"),
+            "rife-v4.18" => (418, "rife_v4.18.onnx"),
+            "rife-v4.20" => (420, "rife_v4.20.onnx"),
+            "rife-v4.21" => (421, "rife_v4.21.onnx"),
+            "rife-v4.22" => (422, "rife_v4.22.onnx"),
+            "rife-v4.22-lite" => (422, "rife_v4.22_lite.onnx"),
+            "rife-v4.25" => (425, "rife_v4.25.onnx"),
+            "rife-v4.25-lite" => (425, "rife_v4.25_lite.onnx"),
+            "rife-v4.26" => (426, "rife_v4.26.onnx"),
+            "rife-UHD" => (49, "rife_v4.9_uhd.onnx"),
+            "rife-anime" => (48, "rife_v4.8_anime.onnx"),
+            _ => (46, "rife_v4.6.onnx")  // Default to v4.6
         };
+
+        // Validate model file exists before proceeding (avoids 5-15 min TensorRT failure)
+        var modelPath = Path.Combine(rifeModelDir, modelFilename);
+        if (!File.Exists(modelPath))
+        {
+            // Try to find what models ARE available
+            var availableModels = Directory.Exists(rifeModelDir)
+                ? Directory.GetFiles(rifeModelDir, "*.onnx").Select(Path.GetFileName).ToList()
+                : [];
+
+            var availableMsg = availableModels.Count > 0
+                ? $"Available models: {string.Join(", ", availableModels)}"
+                : $"No ONNX models found in {rifeModelDir}";
+
+            throw new FileNotFoundException(
+                $"RIFE model not found: {modelFilename}\n" +
+                $"Expected at: {modelPath}\n" +
+                $"{availableMsg}");
+        }
+
+        Debug.WriteLine($"[RIFE] Using model: {modelFilename} (ID: {modelId})");
 
         // Determine engine backend
         var engineBackend = options.Engine switch
@@ -894,10 +919,6 @@ public class RifeInterpolationService
         var gpuThreads = options.GpuThreads;
         var sceneDetect = options.SceneDetection == SceneChangeDetection.Disabled ? "None" : "True";
         var targetHeight = options.FrameHeight;
-
-        // SVP model path for ONNX files (use _rifeFolderPath which is already validated)
-        // Note: vsmlrt adds "rife\" prefix internally, so we only need to point to "models" folder
-        var svpModelPath = Path.Combine(_rifeFolderPath, "models");
 
         return $@"
 import vapoursynth as vs

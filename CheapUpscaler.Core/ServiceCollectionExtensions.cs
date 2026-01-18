@@ -77,36 +77,55 @@ public static class ServiceCollectionExtensions
     /// <summary>
     /// Factory method to create RifeInterpolationService with SVP-detected paths
     /// </summary>
-    /// <remarks>
-    /// Detection priority:
-    /// 1. SVP 4 Pro installation (includes RIFE, Python, TensorRT)
-    /// 2. Future: AppSettings.ToolPaths.RifeFolderPath for manual configuration
-    /// 3. Empty paths (RIFE features unavailable, will show error at runtime)
-    /// </remarks>
     private static RifeInterpolationService CreateRifeService(IServiceProvider serviceProvider)
     {
         var svpDetection = serviceProvider.GetRequiredService<SvpDetectionService>();
+        var (rifePath, pythonPath) = ResolveRifePaths(null, null, svpDetection);
+        return new RifeInterpolationService(rifePath, pythonPath);
+    }
+
+    /// <summary>
+    /// Resolves RIFE paths using provided configuration and SVP detection fallback.
+    /// Shared logic used by both Core factory and Blazor settings-aware factory.
+    /// </summary>
+    /// <param name="configuredRifePath">User-configured RIFE path (null/empty = use auto-detection)</param>
+    /// <param name="configuredPythonPath">User-configured Python path (null/empty = use SVP's Python)</param>
+    /// <param name="svpDetection">SVP detection service for auto-detection fallback</param>
+    /// <returns>Tuple of (rifePath, pythonPath) - may be empty if no RIFE found</returns>
+    /// <remarks>
+    /// Detection priority:
+    /// 1. User-configured path (if provided and exists)
+    /// 2. SVP 4 Pro installation (includes RIFE, Python, TensorRT)
+    /// 3. Empty paths (RIFE features unavailable, will show error at runtime)
+    /// </remarks>
+    public static (string rifePath, string pythonPath) ResolveRifePaths(
+        string? configuredRifePath,
+        string? configuredPythonPath,
+        SvpDetectionService svpDetection)
+    {
+        // 1. Check user-configured path first
+        if (!string.IsNullOrEmpty(configuredRifePath))
+        {
+            if (Directory.Exists(configuredRifePath))
+            {
+                Debug.WriteLine($"[RIFE] Using configured path: {configuredRifePath}");
+                return (configuredRifePath, configuredPythonPath ?? "");
+            }
+            Debug.WriteLine($"[RIFE] WARNING: Configured path does not exist: {configuredRifePath}");
+        }
+
+        // 2. Fall back to SVP auto-detection
         var svp = svpDetection.DetectSvpInstallation();
-
-        string rifePath;
-        string pythonPath;
-
         if (svp.IsInstalled && !string.IsNullOrEmpty(svp.RifePath))
         {
-            rifePath = svp.RifePath;
-            pythonPath = !string.IsNullOrEmpty(svp.PythonPath) ? svp.PythonPath : "";
-            Debug.WriteLine($"[RIFE] Using SVP installation: {rifePath}");
-        }
-        else
-        {
-            // SVP not found - RIFE will not be available
-            // TODO: Check AppSettings.ToolPaths.RifeFolderPath for manual configuration
-            rifePath = "";
-            pythonPath = "";
-            Debug.WriteLine("[RIFE] WARNING: SVP not detected. RIFE frame interpolation will not be available.");
-            Debug.WriteLine("[RIFE] Install SVP 4 Pro from https://www.svp-team.com/get/ for RIFE support.");
+            var pythonPath = !string.IsNullOrEmpty(svp.PythonPath) ? svp.PythonPath : "";
+            Debug.WriteLine($"[RIFE] Using SVP installation: {svp.RifePath}");
+            return (svp.RifePath, pythonPath);
         }
 
-        return new RifeInterpolationService(rifePath, pythonPath);
+        // 3. RIFE not available
+        Debug.WriteLine("[RIFE] WARNING: No RIFE installation found.");
+        Debug.WriteLine("[RIFE] To enable RIFE: Install SVP 4 Pro (https://www.svp-team.com/get/) or configure RifeFolderPath in Settings.");
+        return ("", "");
     }
 }

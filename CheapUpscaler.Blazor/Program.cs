@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using CheapAvaloniaBlazor.Extensions;
 using CheapHelpers.MediaProcessing.Services;
 using CheapUpscaler.Blazor.Data;
@@ -85,46 +84,18 @@ class Program
 
     /// <summary>
     /// Factory method to create RifeInterpolationService with settings-first path resolution.
-    /// Priority: 1) AppSettings.ToolPaths.RifeFolderPath, 2) SVP auto-detection, 3) empty (RIFE unavailable)
+    /// Uses shared ResolveRifePaths from Core with AppSettings values.
     /// </summary>
     private static RifeInterpolationService CreateRifeServiceWithSettings(IServiceProvider serviceProvider)
     {
         var settings = serviceProvider.GetRequiredService<ISettingsService>();
         var svpDetection = serviceProvider.GetRequiredService<SvpDetectionService>();
 
-        string rifePath;
-        string pythonPath;
+        var (rifePath, pythonPath) = Core.ServiceCollectionExtensions.ResolveRifePaths(
+            settings.Settings.ToolPaths.RifeFolderPath,
+            settings.Settings.ToolPaths.PythonPath,
+            svpDetection);
 
-        // 1. Check AppSettings first (user-configured path)
-        var configuredPath = settings.Settings.ToolPaths.RifeFolderPath;
-        if (!string.IsNullOrEmpty(configuredPath))
-        {
-            if (Directory.Exists(configuredPath))
-            {
-                rifePath = configuredPath;
-                pythonPath = settings.Settings.ToolPaths.PythonPath ?? "";
-                Debug.WriteLine($"[RIFE] Using configured path from settings: {rifePath}");
-                return new RifeInterpolationService(rifePath, pythonPath);
-            }
-            else
-            {
-                Debug.WriteLine($"[RIFE] WARNING: Configured path does not exist: {configuredPath}");
-            }
-        }
-
-        // 2. Fall back to SVP auto-detection
-        var svp = svpDetection.DetectSvpInstallation();
-        if (svp.IsInstalled && !string.IsNullOrEmpty(svp.RifePath))
-        {
-            rifePath = svp.RifePath;
-            pythonPath = !string.IsNullOrEmpty(svp.PythonPath) ? svp.PythonPath : "";
-            Debug.WriteLine($"[RIFE] Using SVP installation: {rifePath}");
-            return new RifeInterpolationService(rifePath, pythonPath);
-        }
-
-        // 3. RIFE not available - service will report IsConfigured=false
-        Debug.WriteLine("[RIFE] WARNING: No RIFE installation found.");
-        Debug.WriteLine("[RIFE] To enable RIFE: Install SVP 4 Pro (https://www.svp-team.com/get/) or configure RifeFolderPath in Settings.");
-        return new RifeInterpolationService("", "");
+        return new RifeInterpolationService(rifePath, pythonPath);
     }
 }
