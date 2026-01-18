@@ -215,7 +215,7 @@ public class RifeInterpolationService
 
                 Debug.WriteLine($"Created VapourSynth script: {tempScriptPath}");
 
-                // First, test if the script loads properly
+                // First, test if the script loads properly (streams output in real-time for debugging)
                 var testProcess = new ProcessStartInfo
                 {
                     FileName = vspipePath,
@@ -232,8 +232,29 @@ public class RifeInterpolationService
                     {
                         Debug.WriteLine("Testing VapourSynth script (TensorRT initialization may take 5-15 minutes on first run)...");
 
-                        var testOutput = await test.StandardOutput.ReadToEndAsync(cancellationToken);
-                        var testError = await test.StandardError.ReadToEndAsync(cancellationToken);
+                        var outputBuilder = new System.Text.StringBuilder();
+                        var errorBuilder = new System.Text.StringBuilder();
+
+                        // Stream output in real-time for debugging
+                        var stdoutTask = Task.Run(async () =>
+                        {
+                            string? line;
+                            while ((line = await test.StandardOutput.ReadLineAsync(cancellationToken)) != null)
+                            {
+                                Debug.WriteLine($"[vspipe stdout] {line}");
+                                outputBuilder.AppendLine(line);
+                            }
+                        }, cancellationToken);
+
+                        var stderrTask = Task.Run(async () =>
+                        {
+                            string? line;
+                            while ((line = await test.StandardError.ReadLineAsync(cancellationToken)) != null)
+                            {
+                                Debug.WriteLine($"[vspipe stderr] {line}");
+                                errorBuilder.AppendLine(line);
+                            }
+                        }, cancellationToken);
 
                         // Wait up to 20 minutes for TensorRT to compile on first run
                         var timeoutMs = 20 * 60 * 1000; // 20 minutes
@@ -246,13 +267,20 @@ public class RifeInterpolationService
                             throw new TimeoutException("VapourSynth script test timed out. TensorRT initialization may have failed.");
                         }
 
+                        // Wait for output tasks to complete
+                        await Task.WhenAll(stdoutTask, stderrTask);
+
+                        var testOutput = outputBuilder.ToString();
+                        var testError = errorBuilder.ToString();
+
                         if (test.ExitCode != 0)
                         {
-                            Debug.WriteLine($"VapourSynth script test failed: {testError}");
+                            Debug.WriteLine($"VapourSynth script test failed with exit code {test.ExitCode}");
+                            Debug.WriteLine($"stderr: {testError}");
                             throw new InvalidOperationException($"Failed to load VapourSynth script: {testError}");
                         }
 
-                        Debug.WriteLine($"VapourSynth script info: {testOutput}");
+                        Debug.WriteLine($"VapourSynth script test passed. Output: {testOutput}");
                     }
                 }
 
@@ -868,7 +896,8 @@ public class RifeInterpolationService
         var targetHeight = options.FrameHeight;
 
         // SVP model path for ONNX files (use _rifeFolderPath which is already validated)
-        var svpModelPath = Path.Combine(_rifeFolderPath, "models", "rife");
+        // Note: vsmlrt adds "rife\" prefix internally, so we only need to point to "models" folder
+        var svpModelPath = Path.Combine(_rifeFolderPath, "models");
 
         return $@"
 import vapoursynth as vs

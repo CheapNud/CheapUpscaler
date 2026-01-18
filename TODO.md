@@ -166,27 +166,25 @@ Issues from PR #2 review and code audit. See: https://github.com/CheapNud/CheapU
 
 ### Critical Fixes (Breaking without SVP)
 
-- [ ] **Add `RifeFolderPath` to `AppSettings.ToolPaths`** - Allow user-configurable RIFE path in Settings UI
-- [ ] **Fix empty string fallbacks in DI factory** (`ServiceCollectionExtensions.cs:30-35`)
-  - Currently: `rifePath = svp.RifePath ?: ""` → crashes at runtime
-  - Should: Check AppSettings first, then SVP, then fail gracefully with error message
-- [ ] **Make VapourSynth script generation conditional** (`RifeInterpolationService.cs`)
-  - Validate paths exist before generating script
-  - `svpModelPath` is currently hardcoded, breaks without SVP
-- [ ] **Extract factory to avoid DRY violation** - Same factory logic duplicated in `AddUpscalerServices` and `AddRifeServices`
+- [x] **Add `RifeFolderPath` to `AppSettings.ToolPaths`** - User-configurable RIFE path in Settings
+- [x] **Fix empty string fallbacks in DI factory** - Program.cs overrides Core factory with settings-first logic
+  - Priority: 1) AppSettings.ToolPaths.RifeFolderPath, 2) SVP auto-detection, 3) empty (RIFE unavailable)
+- [x] **Make VapourSynth script generation conditional** (`RifeInterpolationService.cs`)
+  - Validates paths exist before generating script, throws descriptive exceptions
+- [x] **Extract factory to avoid DRY violation** - `CreateRifeService()` in ServiceCollectionExtensions.cs
 
 ### Code Quality (From PR Bot Review)
 
-- [ ] **Add constants for magic strings** - `"vstrt.dll"`, `"rife_vs.dll"`, `"rife.dll"` etc.
-- [ ] **Safe path handling** - `Path.GetDirectoryName(pluginPath) ?? ""` returns empty string, should throw
+- [x] **Add constants for magic strings** - `KnownDlls` class in DependencyChecker.cs
+- [x] **Safe path handling** - Validated paths before use in GenerateSvpRifeScript
 - [ ] **Use proper logging** - Replace `Debug.WriteLine` with `ILogger<T>` injection
-- [ ] **Add XML documentation** - Explain SVP integration approach
+- [x] **Add XML documentation** - SVP integration explained in ServiceCollectionExtensions
 
 ### Dead Code Cleanup
 
 - [ ] **Remove or integrate `RifeVariantDetector`** - Currently registered but never used in job processing
-- [ ] **Remove `RifeOptions.BuildArguments()`** - Dead code, was for CLI RIFE
-- [ ] **Remove GitHub RIFE code path** (`RifeInterpolationService.cs:408-436`) - Can never execute
+- [x] **Remove `RifeOptions.BuildArguments()`** - Removed (was for CLI RIFE)
+- [x] ~~**Remove GitHub RIFE code path**~~ - NOT dead code: supports Practical-RIFE as SVP alternative
 
 ### Temp File Management
 
