@@ -16,7 +16,7 @@
     <!-- FFmpeg integration -->
     <PackageReference Include="FFMpegCore" Version="5.4.0" />
     <!-- Media processing shared library -->
-    <PackageReference Include="CheapHelpers.MediaProcessing" Version="1.2.0" />
+    <PackageReference Include="CheapHelpers.MediaProcessing" Version="1.3.0" />
   </ItemGroup>
 
 </Project>
