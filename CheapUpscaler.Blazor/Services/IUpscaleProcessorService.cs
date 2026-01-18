@@ -1,4 +1,4 @@
-using CheapUpscaler.Blazor.Models;
+using CheapUpscaler.Shared.Models;
 
 namespace CheapUpscaler.Blazor.Services;
 

@@ -1,4 +1,4 @@
-namespace CheapUpscaler.Blazor.Models;
+namespace CheapUpscaler.Shared.Models;
 
 /// <summary>
 /// Event args for upscale job progress updates

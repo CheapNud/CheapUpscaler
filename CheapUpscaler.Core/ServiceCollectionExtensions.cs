@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using CheapUpscaler.Core.Services.VapourSynth;
@@ -5,6 +6,8 @@ using CheapUpscaler.Core.Services.RIFE;
 using CheapUpscaler.Core.Services.RealCUGAN;
 using CheapUpscaler.Core.Services.RealESRGAN;
 using CheapUpscaler.Core.Services.Upscaling;
+using CheapUpscaler.Core.Platform;
+using CheapUpscaler.Shared.Platform;
 using CheapHelpers.MediaProcessing.Services;
 
 namespace CheapUpscaler.Core;
@@ -21,10 +24,33 @@ namespace CheapUpscaler.Core;
 public static class ServiceCollectionExtensions
 {
     /// <summary>
+    /// Add platform-specific services (IPlatformPaths, IToolLocator)
+    /// Automatically detects Windows vs Linux and registers appropriate implementations
+    /// </summary>
+    public static IServiceCollection AddPlatformServices(this IServiceCollection services)
+    {
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            services.AddSingleton<IPlatformPaths, WindowsPlatformPaths>();
+            services.AddSingleton<IToolLocator, WindowsToolLocator>();
+        }
+        else
+        {
+            services.AddSingleton<IPlatformPaths, LinuxPlatformPaths>();
+            services.AddSingleton<IToolLocator, LinuxToolLocator>();
+        }
+
+        return services;
+    }
+
+    /// <summary>
     /// Add all CheapUpscaler AI upscaling services to the service collection
     /// </summary>
     public static IServiceCollection AddUpscalerServices(this IServiceCollection services)
     {
+        // Platform-specific services
+        services.AddPlatformServices();
+
         // VapourSynth environment (shared by AI services)
         services.AddSingleton<IVapourSynthEnvironment, VapourSynthEnvironment>();
 

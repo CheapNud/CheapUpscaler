@@ -20,6 +20,8 @@
   <ItemGroup>
     <!-- Core upscaling services -->
     <ProjectReference Include="..\CheapUpscaler.Core\CheapUpscaler.Core.csproj" />
+    <!-- Shared models, data layer, and platform abstractions -->
+    <ProjectReference Include="..\CheapUpscaler.Shared\CheapUpscaler.Shared.csproj" />
   </ItemGroup>
 
 </Project>

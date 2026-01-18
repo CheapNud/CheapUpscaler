@@ -1,6 +1,6 @@
 using System.Threading.Channels;
 
-namespace CheapUpscaler.Blazor.Services;
+namespace CheapUpscaler.Shared.Services;
 
 /// <summary>
 /// Interface for background task queue

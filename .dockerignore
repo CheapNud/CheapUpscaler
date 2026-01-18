@@ -1,0 +1,43 @@
+# Git
+.git
+.gitignore
+
+# Visual Studio
+.vs
+*.user
+*.suo
+*.cache
+
+# Build outputs
+**/bin/
+**/obj/
+**/out/
+
+# Test results
+**/TestResults/
+
+# NuGet
+**/packages/
+
+# IDE
+.idea/
+.vscode/
+
+# Docker
+docker/input/
+docker/output/
+docker/models/
+docker/logs/
+
+# Blazor project (not needed in Worker container)
+CheapUpscaler.Blazor/
+
+# Documentation
+*.md
+!docker/README.md
+
+# Misc
+*.log
+*.tmp
+Thumbs.db
+.DS_Store

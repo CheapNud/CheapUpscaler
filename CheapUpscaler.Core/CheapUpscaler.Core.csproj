@@ -17,6 +17,13 @@
     <PackageReference Include="FFMpegCore" Version="5.4.0" />
     <!-- Media processing shared library -->
     <PackageReference Include="CheapHelpers.MediaProcessing" Version="1.3.0" />
+    <!-- Logging abstractions for ILogger -->
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Shared platform abstractions -->
+    <ProjectReference Include="..\CheapUpscaler.Shared\CheapUpscaler.Shared.csproj" />
   </ItemGroup>
 
 </Project>

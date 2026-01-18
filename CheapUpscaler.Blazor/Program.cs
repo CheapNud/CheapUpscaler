@@ -1,8 +1,9 @@
 using CheapAvaloniaBlazor.Extensions;
 using CheapHelpers.MediaProcessing.Services;
-using CheapUpscaler.Blazor.Data;
 using CheapUpscaler.Blazor.Services;
 using CheapUpscaler.Core;
+using CheapUpscaler.Shared.Data;
+using CheapUpscaler.Shared.Services;
 using CheapUpscaler.Core.Services.RIFE;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;

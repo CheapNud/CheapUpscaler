@@ -1,7 +1,7 @@
-using CheapUpscaler.Blazor.Models;
+using CheapUpscaler.Shared.Models;
 using Microsoft.EntityFrameworkCore;
 
-namespace CheapUpscaler.Blazor.Data;
+namespace CheapUpscaler.Shared.Data;
 
 /// <summary>
 /// Repository interface for upscale job persistence

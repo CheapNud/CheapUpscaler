@@ -1,6 +1,6 @@
 using System.Text.Json;
 
-namespace CheapUpscaler.Blazor.Models;
+namespace CheapUpscaler.Shared.Models;
 
 /// <summary>
 /// Represents a video upscaling/interpolation job in the queue
@@ -12,6 +12,9 @@ public class UpscaleJob
 
     /// <summary>Unique job identifier</summary>
     public Guid JobId { get; set; } = Guid.NewGuid();
+
+    /// <summary>Display name for the job</summary>
+    public string? JobName { get; set; }
 
     /// <summary>Path to source video file</summary>
     public string SourceVideoPath { get; set; } = string.Empty;
