@@ -4,6 +4,7 @@ using CheapUpscaler.Core.Services.RIFE;
 using CheapUpscaler.Core.Services.RealCUGAN;
 using CheapUpscaler.Core.Services.RealESRGAN;
 using CheapUpscaler.Core.Services.Upscaling;
+using CheapHelpers.MediaProcessing.Services;
 
 namespace CheapUpscaler.Core;
 
@@ -20,8 +21,21 @@ public static class ServiceCollectionExtensions
         // VapourSynth environment (shared by AI services)
         services.AddSingleton<IVapourSynthEnvironment, VapourSynthEnvironment>();
 
-        // RIFE frame interpolation
-        services.AddTransient<RifeInterpolationService>();
+        // RIFE frame interpolation - configured via factory to get SVP paths
+        services.AddTransient(sp =>
+        {
+            var svpDetection = sp.GetRequiredService<SvpDetectionService>();
+            var svp = svpDetection.DetectSvpInstallation();
+
+            var rifePath = svp.IsInstalled && !string.IsNullOrEmpty(svp.RifePath)
+                ? svp.RifePath
+                : "";
+            var pythonPath = svp.IsInstalled && !string.IsNullOrEmpty(svp.PythonPath)
+                ? svp.PythonPath
+                : "";
+
+            return new RifeInterpolationService(rifePath, pythonPath);
+        });
         services.AddTransient<RifeVariantDetector>();
 
         // AI upscaling services
@@ -49,7 +63,20 @@ public static class ServiceCollectionExtensions
     public static IServiceCollection AddRifeServices(this IServiceCollection services)
     {
         services.AddSingleton<IVapourSynthEnvironment, VapourSynthEnvironment>();
-        services.AddTransient<RifeInterpolationService>();
+        services.AddTransient(sp =>
+        {
+            var svpDetection = sp.GetRequiredService<SvpDetectionService>();
+            var svp = svpDetection.DetectSvpInstallation();
+
+            var rifePath = svp.IsInstalled && !string.IsNullOrEmpty(svp.RifePath)
+                ? svp.RifePath
+                : "";
+            var pythonPath = svp.IsInstalled && !string.IsNullOrEmpty(svp.PythonPath)
+                ? svp.PythonPath
+                : "";
+
+            return new RifeInterpolationService(rifePath, pythonPath);
+        });
         services.AddTransient<RifeVariantDetector>();
         return services;
     }

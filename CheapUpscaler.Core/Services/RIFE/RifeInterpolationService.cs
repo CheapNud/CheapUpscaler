@@ -826,7 +826,7 @@ public class RifeInterpolationService
 
         var pluginPath = Path.Combine(_rifeFolderPath, "rife_vs.dll");
 
-        // Map our model names to SVP's expected format
+        // Map our model names to SVP's expected format (model ID used by vsmlrt)
         var modelId = options.ModelName switch
         {
             "rife-v4.6" => 46,
@@ -844,7 +844,7 @@ public class RifeInterpolationService
             "rife-v4.26" => 426,
             "rife-UHD" => 49,
             "rife-anime" => 48,
-            _ => 422
+            _ => 46  // Default to v4.6 which is commonly available
         };
 
         // Determine engine backend
@@ -852,13 +852,16 @@ public class RifeInterpolationService
         {
             RifeEngine.TensorRT => "Backend.TRT",
             RifeEngine.Vulkan => "Backend.OV_CPU",
-            RifeEngine.NCNN => "Backend.NCNN",
+            RifeEngine.NCNN => "Backend.NCNN_VK",
             _ => "Backend.TRT"
         };
 
         var gpuThreads = options.GpuThreads;
         var sceneDetect = options.SceneDetection == SceneChangeDetection.Disabled ? "None" : "True";
         var targetHeight = options.FrameHeight;
+
+        // SVP model path for ONNX files
+        var svpModelPath = Path.Combine(Path.GetDirectoryName(pluginPath) ?? "", "models", "rife");
 
         return $@"
 import vapoursynth as vs
@@ -884,7 +887,10 @@ except:
     pass
 
 try:
+    import vsmlrt
     from vsmlrt import RIFE, Backend
+    # Override models_path to use SVP's model location
+    vsmlrt.models_path = r'{svpModelPath}'
 except ImportError as e:
     raise Exception(f'Failed to import vsmlrt module: {{e}}')
 
@@ -932,12 +938,7 @@ if padded_width != width or padded_height != height:
 try:
     backend = {engineBackend}(
         num_streams={gpuThreads},
-        device_id={options.GpuId},
-        force_fp16=True,
-        output_format=1,
-        workspace=None,
-        use_cuda_graph=True,
-        tf32=True
+        device_id={options.GpuId}
     )
 
     clip = RIFE(clip, {multiplier}, 1.0, None, None, None, {modelId}, backend, {(options.TtaMode ? "True" : "False")}, {(options.UhdMode ? "True" : "False")}, {sceneDetect})

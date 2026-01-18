@@ -26,13 +26,13 @@ class Program
                 config.SnackbarConfiguration.HideTransitionDuration = 200;
             });
 
-        // Register CheapUpscaler.Core AI services
-        builder.Services.AddUpscalerServices();
-
-        // Register CheapHelpers.MediaProcessing services
+        // Register CheapHelpers.MediaProcessing services (must be before Core services)
         builder.Services.AddSingleton<SvpDetectionService>();
         builder.Services.AddSingleton<HardwareDetectionService>();
         builder.Services.AddSingleton<ExecutableDetectionService>();
+
+        // Register CheapUpscaler.Core AI services (depends on SvpDetectionService)
+        builder.Services.AddUpscalerServices();
 
         // Register Blazor services
         builder.Services.AddSingleton<DependencyChecker>();

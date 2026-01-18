@@ -51,12 +51,14 @@ public class UpscaleProcessorService(
             TargetFps = jobSettings.TargetFps,
             Engine = RifeEngine.TensorRT,
             GpuId = 0,
+            // Model names must match GenerateSvpRifeScript switch cases
+            // Available in SVP: rife-v4.6, rife-v4.16-lite
             ModelName = jobSettings.QualityPreset switch
             {
-                "Fast" => "4.6",
-                "Medium" => "4.15",
-                "High" => "4.22",
-                _ => "4.15"
+                "Fast" => "rife-v4.6",
+                "Medium" => "rife-v4.6",      // Use v4.6 as default since user has it
+                "High" => "rife-v4.16-lite",  // v4.16-lite is the best user has
+                _ => "rife-v4.6"
             }
         };
 
