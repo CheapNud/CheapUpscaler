@@ -160,6 +160,49 @@ AI video upscaling and frame interpolation. Takes rendered video output (from Ch
 
 ---
 
+## Next Branch: SVP Detection & Path Configuration Fixes
+
+Issues from PR #2 review and code audit. See: https://github.com/CheapNud/CheapUpscaler/pull/2
+
+### Critical Fixes (Breaking without SVP)
+
+- [x] **Add `RifeFolderPath` to `AppSettings.ToolPaths`** - User-configurable RIFE path in Settings
+- [x] **Fix empty string fallbacks in DI factory** - Program.cs overrides Core factory with settings-first logic
+  - Priority: 1) AppSettings.ToolPaths.RifeFolderPath, 2) SVP auto-detection, 3) empty (RIFE unavailable)
+- [x] **Make VapourSynth script generation conditional** (`RifeInterpolationService.cs`)
+  - Validates paths exist before generating script, throws descriptive exceptions
+- [x] **Extract factory to avoid DRY violation** - `CreateRifeService()` in ServiceCollectionExtensions.cs
+
+### Code Quality (From PR Bot Review)
+
+- [x] **Add constants for magic strings** - `KnownDlls` class in DependencyChecker.cs
+- [x] **Safe path handling** - Validated paths before use in GenerateSvpRifeScript
+- [ ] **Use proper logging** - Replace `Debug.WriteLine` with `ILogger<T>` injection
+- [x] **Add XML documentation** - SVP integration explained in ServiceCollectionExtensions
+
+### Dead Code Cleanup
+
+- [x] ~~**Remove or integrate `RifeVariantDetector`**~~ - KEEP for future Linux/Docker support
+  - SVP not available on Linux, so Practical-RIFE with standalone executables (`rife-tensorrt.exe`, `rife-ncnn-vulkan.exe`) is needed
+  - Variant detection will be useful for Ubuntu Worker Service deployment
+- [x] **Remove `RifeOptions.BuildArguments()`** - Removed (was for CLI RIFE)
+- [x] ~~**Remove GitHub RIFE code path**~~ - NOT dead code: supports Practical-RIFE as SVP alternative
+
+### Temp File Management
+
+- [ ] **Use `TemporaryFileManager` from CheapHelpers.MediaProcessing** for VapourSynth script files
+  - Currently: `Path.Combine(Path.GetTempPath(), $"svp_rife_{Guid}.vpy")`
+  - Should: Use `TemporaryFileManager.GetTempFilePath("svp_rife", ".vpy")` with proper cleanup
+
+### Future Enhancement Ideas
+
+- [x] **Model detection** - `RifeInterpolationService.GetAvailableModels()` scans ONNX files
+  - `UpscaleProcessorService.ProcessRifeAsync()` pre-validates and falls back to available model
+- [ ] **Engine auto-selection** - TensorRT if ONNX available, NCNN_VK if only .bin/.param
+- [ ] **Integrate `DependencyChecker` results** - Use detected RIFE path to initialize service at runtime
+
+---
+
 ## Future: Ubuntu Worker Service
 
 When ready to deploy to Tranquility (Ubuntu server):

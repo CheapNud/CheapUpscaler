@@ -34,6 +34,13 @@ public class ToolPaths
 
     /// <summary>Path to vspipe executable (null = auto-detect)</summary>
     public string? VspipePath { get; set; }
+
+    /// <summary>
+    /// Path to RIFE folder (null = auto-detect from SVP installation).
+    /// For SVP users: typically C:\Program Files (x86)\SVP 4\rife
+    /// For standalone: path containing rife_vs.dll or inference_video.py
+    /// </summary>
+    public string? RifeFolderPath { get; set; }
 }
 
 /// <summary>

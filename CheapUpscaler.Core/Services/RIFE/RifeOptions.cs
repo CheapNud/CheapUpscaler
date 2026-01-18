@@ -78,25 +78,6 @@ public class RifeOptions
     public int TileSize { get; set; } = 0;
     public int InterpolationPasses { get; set; } = 1;
 
-    public string BuildArguments(string inputFolder, string outputFolder)
-    {
-        var args = new List<string>
-        {
-            $"-i \"{inputFolder}\"",
-            $"-o \"{outputFolder}\"",
-            $"-m {ModelName}",
-            $"-g {GpuId}",
-            $"-j {ThreadConfig}",
-            $"-n {InterpolationPasses}"
-        };
-
-        if (UhMode) args.Add("-u");
-        if (TtaMode) args.Add("-x");
-        if (TileSize > 0) args.Add($"-t {TileSize}");
-
-        return string.Join(" ", args);
-    }
-
     public int GetFrameMultiplier() => (int)Math.Pow(2, InterpolationPasses);
 
     public int InterpolationMultiplier

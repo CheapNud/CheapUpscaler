@@ -42,8 +42,41 @@ public class UpscaleProcessorService(
         IProgress<double>? progress,
         CancellationToken cancellationToken)
     {
+        // Pre-validate RIFE is configured
+        if (!rifeService.IsConfigured)
+        {
+            throw new InvalidOperationException(
+                "RIFE is not configured. Install SVP 4 Pro or configure RifeFolderPath in Settings.");
+        }
+
         var jobSettings = DeserializeSettings<RifeJobSettings>(job.SettingsJson);
         var appSettings = await settingsService.LoadAsync();
+
+        // Map quality preset to model, with fallback to first available
+        var availableModels = rifeService.GetAvailableModels();
+        if (availableModels.Count == 0)
+        {
+            throw new InvalidOperationException(
+                "No RIFE ONNX models found. Check your SVP installation or RIFE folder path.");
+        }
+
+        var preferredModel = jobSettings.QualityPreset switch
+        {
+            "Fast" => "rife-v4.6",
+            "Medium" => "rife-v4.6",
+            "High" => "rife-v4.16-lite",
+            _ => "rife-v4.6"
+        };
+
+        // Use preferred model if available, otherwise fall back to first available
+        var modelName = availableModels.Contains(preferredModel, StringComparer.OrdinalIgnoreCase)
+            ? preferredModel
+            : availableModels[0];
+
+        if (modelName != preferredModel)
+        {
+            Debug.WriteLine($"RIFE: Preferred model '{preferredModel}' not available, using '{modelName}' instead");
+        }
 
         var options = new RifeOptions
         {
@@ -51,13 +84,7 @@ public class UpscaleProcessorService(
             TargetFps = jobSettings.TargetFps,
             Engine = RifeEngine.TensorRT,
             GpuId = 0,
-            ModelName = jobSettings.QualityPreset switch
-            {
-                "Fast" => "4.6",
-                "Medium" => "4.15",
-                "High" => "4.22",
-                _ => "4.15"
-            }
+            ModelName = modelName
         };
 
         Debug.WriteLine($"RIFE: {jobSettings.Multiplier}x, Target FPS: {jobSettings.TargetFps}, Model: {options.ModelName}");

@@ -1,15 +1,23 @@
+using System.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 using CheapUpscaler.Core.Services.VapourSynth;
 using CheapUpscaler.Core.Services.RIFE;
 using CheapUpscaler.Core.Services.RealCUGAN;
 using CheapUpscaler.Core.Services.RealESRGAN;
 using CheapUpscaler.Core.Services.Upscaling;
+using CheapHelpers.MediaProcessing.Services;
 
 namespace CheapUpscaler.Core;
 
 /// <summary>
 /// Dependency injection extension methods for CheapUpscaler.Core services
 /// </summary>
+/// <remarks>
+/// SVP Integration: RifeInterpolationService is configured via factory pattern to automatically
+/// detect SVP 4 Pro installation and use its bundled RIFE, Python, and TensorRT components.
+/// If SVP is not installed, paths will be empty and RIFE features will be unavailable.
+/// Future: Add AppSettings integration for manual path configuration.
+/// </remarks>
 public static class ServiceCollectionExtensions
 {
     /// <summary>
@@ -20,8 +28,8 @@ public static class ServiceCollectionExtensions
         // VapourSynth environment (shared by AI services)
         services.AddSingleton<IVapourSynthEnvironment, VapourSynthEnvironment>();
 
-        // RIFE frame interpolation
-        services.AddTransient<RifeInterpolationService>();
+        // RIFE frame interpolation - configured via factory to get SVP paths
+        services.AddTransient(CreateRifeService);
         services.AddTransient<RifeVariantDetector>();
 
         // AI upscaling services
@@ -49,7 +57,7 @@ public static class ServiceCollectionExtensions
     public static IServiceCollection AddRifeServices(this IServiceCollection services)
     {
         services.AddSingleton<IVapourSynthEnvironment, VapourSynthEnvironment>();
-        services.AddTransient<RifeInterpolationService>();
+        services.AddTransient(CreateRifeService);
         services.AddTransient<RifeVariantDetector>();
         return services;
     }
@@ -64,5 +72,60 @@ public static class ServiceCollectionExtensions
         services.AddTransient<RealEsrganService>();
         services.AddTransient<NonAiUpscalingService>();
         return services;
+    }
+
+    /// <summary>
+    /// Factory method to create RifeInterpolationService with SVP-detected paths
+    /// </summary>
+    private static RifeInterpolationService CreateRifeService(IServiceProvider serviceProvider)
+    {
+        var svpDetection = serviceProvider.GetRequiredService<SvpDetectionService>();
+        var (rifePath, pythonPath) = ResolveRifePaths(null, null, svpDetection);
+        return new RifeInterpolationService(rifePath, pythonPath);
+    }
+
+    /// <summary>
+    /// Resolves RIFE paths using provided configuration and SVP detection fallback.
+    /// Shared logic used by both Core factory and Blazor settings-aware factory.
+    /// </summary>
+    /// <param name="configuredRifePath">User-configured RIFE path (null/empty = use auto-detection)</param>
+    /// <param name="configuredPythonPath">User-configured Python path (null/empty = use SVP's Python)</param>
+    /// <param name="svpDetection">SVP detection service for auto-detection fallback</param>
+    /// <returns>Tuple of (rifePath, pythonPath) - may be empty if no RIFE found</returns>
+    /// <remarks>
+    /// Detection priority:
+    /// 1. User-configured path (if provided and exists)
+    /// 2. SVP 4 Pro installation (includes RIFE, Python, TensorRT)
+    /// 3. Empty paths (RIFE features unavailable, will show error at runtime)
+    /// </remarks>
+    public static (string rifePath, string pythonPath) ResolveRifePaths(
+        string? configuredRifePath,
+        string? configuredPythonPath,
+        SvpDetectionService svpDetection)
+    {
+        // 1. Check user-configured path first
+        if (!string.IsNullOrEmpty(configuredRifePath))
+        {
+            if (Directory.Exists(configuredRifePath))
+            {
+                Debug.WriteLine($"[RIFE] Using configured path: {configuredRifePath}");
+                return (configuredRifePath, configuredPythonPath ?? "");
+            }
+            Debug.WriteLine($"[RIFE] WARNING: Configured path does not exist: {configuredRifePath}");
+        }
+
+        // 2. Fall back to SVP auto-detection
+        var svp = svpDetection.DetectSvpInstallation();
+        if (svp.IsInstalled && !string.IsNullOrEmpty(svp.RifePath))
+        {
+            var pythonPath = !string.IsNullOrEmpty(svp.PythonPath) ? svp.PythonPath : "";
+            Debug.WriteLine($"[RIFE] Using SVP installation: {svp.RifePath}");
+            return (svp.RifePath, pythonPath);
+        }
+
+        // 3. RIFE not available
+        Debug.WriteLine("[RIFE] WARNING: No RIFE installation found.");
+        Debug.WriteLine("[RIFE] To enable RIFE: Install SVP 4 Pro (https://www.svp-team.com/get/) or configure RifeFolderPath in Settings.");
+        return ("", "");
     }
 }

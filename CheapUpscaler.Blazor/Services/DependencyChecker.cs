@@ -12,8 +12,20 @@ namespace CheapUpscaler.Blazor.Services;
 /// </summary>
 public class DependencyChecker(
     IVapourSynthEnvironment vapourSynthEnvironment,
-    ExecutableDetectionService executableDetectionService)
+    ExecutableDetectionService executableDetectionService,
+    SvpDetectionService svpDetectionService)
 {
+    /// <summary>
+    /// Known DLL file names for SVP and TensorRT detection
+    /// </summary>
+    private static class KnownDlls
+    {
+        public const string TensorRt = "vstrt.dll";
+        public const string RifeVs = "rife_vs.dll";
+        public const string Rife = "rife.dll";
+        public const string NvInfer = "nvinfer.dll";
+    }
+
     /// <summary>
     /// Check all dependencies and return overall status
     /// </summary>
@@ -156,7 +168,7 @@ public class DependencyChecker(
             if (!info.IsInstalled)
             {
                 // Alternative check - try importing from vs
-                var (exitCode2, output2, _) = await vapourSynthEnvironment.RunPythonCommandAsync(
+                var (exitCode2, _, _) = await vapourSynthEnvironment.RunPythonCommandAsync(
                     "-c \"from vsmlrt import Backend; print('OK')\"",
                     timeoutMs: 10000);
 
@@ -216,13 +228,29 @@ public class DependencyChecker(
             Name = "TensorRT",
             Description = "NVIDIA inference optimizer for faster AI processing",
             Category = DependencyCategory.Optional,
-            InstallInstructions = "Install TensorRT from NVIDIA Developer site (requires CUDA)",
-            DownloadUrl = "https://developer.nvidia.com/tensorrt"
+            InstallInstructions = "Install SVP 4 Pro (includes TensorRT), or install standalone from NVIDIA",
+            DownloadUrl = "https://www.svp-team.com/get/"
         };
 
         try
         {
-            // Check common TensorRT installation paths
+            // 1. Check for SVP's bundled TensorRT first
+            var svp = svpDetectionService.DetectSvpInstallation();
+            if (svp.IsInstalled && !string.IsNullOrEmpty(svp.RifePath))
+            {
+                // SVP bundles TensorRT with RIFE - check for vstrt.dll
+                var vstrtDll = Path.Combine(svp.RifePath, KnownDlls.TensorRt);
+                if (File.Exists(vstrtDll))
+                {
+                    info.IsInstalled = true;
+                    info.Path = svp.RifePath;
+                    info.Version = "SVP Bundled";
+                    Debug.WriteLine($"Found SVP TensorRT at: {svp.RifePath}");
+                    return Task.FromResult(info);
+                }
+            }
+
+            // 2. Check common standalone TensorRT installation paths
             var tensorRtPaths = new[]
             {
                 Environment.GetEnvironmentVariable("TENSORRT_PATH"),
@@ -230,26 +258,28 @@ public class DependencyChecker(
                 @"C:\TensorRT"
             };
 
-            foreach (var path in tensorRtPaths.Where(p => !string.IsNullOrEmpty(p)))
+            foreach (var tensorRtPath in tensorRtPaths.Where(p => !string.IsNullOrEmpty(p)))
             {
-                if (Directory.Exists(path))
+                if (Directory.Exists(tensorRtPath))
                 {
                     info.IsInstalled = true;
-                    info.Path = path;
+                    info.Path = tensorRtPath;
+                    Debug.WriteLine($"Found standalone TensorRT at: {tensorRtPath}");
                     break;
                 }
             }
 
-            // Also check if nvinfer.dll is in system PATH
+            // 3. Check if nvinfer.dll is in system PATH
             if (!info.IsInstalled)
             {
                 var pathDirs = Environment.GetEnvironmentVariable("PATH")?.Split(';') ?? [];
                 foreach (var dir in pathDirs)
                 {
-                    if (File.Exists(Path.Combine(dir, "nvinfer.dll")))
+                    if (File.Exists(Path.Combine(dir, KnownDlls.NvInfer)))
                     {
                         info.IsInstalled = true;
                         info.Path = dir;
+                        Debug.WriteLine($"Found TensorRT in PATH: {dir}");
                         break;
                     }
                 }
@@ -269,18 +299,35 @@ public class DependencyChecker(
         var info = new DependencyInfo
         {
             Name = "RIFE",
-            Description = "AI frame interpolation (TensorRT or Vulkan variant)",
+            Description = "AI frame interpolation (SVP TensorRT or standalone)",
             Category = DependencyCategory.Optional,
-            InstallInstructions = "Download rife-ncnn-vulkan or rife-tensorrt from GitHub releases",
-            DownloadUrl = "https://github.com/nihui/rife-ncnn-vulkan/releases"
+            InstallInstructions = "Install SVP 4 Pro for TensorRT RIFE, or download rife-ncnn-vulkan",
+            DownloadUrl = "https://www.svp-team.com/get/"
         };
 
         try
         {
-            // Check common RIFE locations
+            // 1. Check for SVP's integrated RIFE first (preferred)
+            var svp = svpDetectionService.DetectSvpInstallation();
+            if (svp.IsInstalled && !string.IsNullOrEmpty(svp.RifePath))
+            {
+                // Check for SVP RIFE DLLs
+                var rifeDll = Path.Combine(svp.RifePath, KnownDlls.RifeVs);
+                var rifeAltDll = Path.Combine(svp.RifePath, KnownDlls.Rife);
+
+                if (File.Exists(rifeDll) || File.Exists(rifeAltDll))
+                {
+                    info.IsInstalled = true;
+                    info.Path = svp.RifePath;
+                    info.Version = "SVP TensorRT";
+                    Debug.WriteLine($"Found SVP RIFE at: {svp.RifePath}");
+                    return Task.FromResult(info);
+                }
+            }
+
+            // 2. Fall back to standalone RIFE executables
             var rifePaths = new[]
             {
-                ".", // Current directory
                 @"C:\RIFE",
                 @"C:\Program Files\RIFE",
                 Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RIFE")
@@ -296,6 +343,7 @@ public class DependencyChecker(
                     info.IsInstalled = true;
                     info.Path = searchPath;
                     info.Version = string.Join(", ", variants);
+                    Debug.WriteLine($"Found standalone RIFE at: {searchPath}");
                     break;
                 }
             }
