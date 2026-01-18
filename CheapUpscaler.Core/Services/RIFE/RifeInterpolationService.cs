@@ -70,17 +70,20 @@ public class RifeInterpolationService
         if (!Directory.Exists(rifeModelDir))
             return RifeEngine.TensorRT;
 
-        // Check for ONNX files (TensorRT)
-        var hasOnnx = Directory.GetFiles(rifeModelDir, "*.onnx").Length > 0;
+        // Check for ONNX files (TensorRT) - case-insensitive
+        var hasOnnx = Directory.EnumerateFiles(rifeModelDir)
+            .Any(f => f.EndsWith(".onnx", StringComparison.OrdinalIgnoreCase));
         if (hasOnnx)
         {
             _logger?.LogDebug("[RIFE] ONNX models found, selecting TensorRT engine");
             return RifeEngine.TensorRT;
         }
 
-        // Check for NCNN files (.bin and .param pairs)
-        var hasBin = Directory.GetFiles(rifeModelDir, "*.bin").Length > 0;
-        var hasParam = Directory.GetFiles(rifeModelDir, "*.param").Length > 0;
+        // Check for NCNN files (.bin and .param pairs) - case-insensitive
+        var hasBin = Directory.EnumerateFiles(rifeModelDir)
+            .Any(f => f.EndsWith(".bin", StringComparison.OrdinalIgnoreCase));
+        var hasParam = Directory.EnumerateFiles(rifeModelDir)
+            .Any(f => f.EndsWith(".param", StringComparison.OrdinalIgnoreCase));
         if (hasBin && hasParam)
         {
             _logger?.LogDebug("[RIFE] NCNN models found, selecting NCNN engine");
@@ -106,13 +109,13 @@ public class RifeInterpolationService
         if (!Directory.Exists(rifeModelDir))
             return engines;
 
-        // Check for ONNX files (TensorRT)
-        if (Directory.GetFiles(rifeModelDir, "*.onnx").Length > 0)
+        // Check for ONNX files (TensorRT) - case-insensitive
+        if (Directory.EnumerateFiles(rifeModelDir).Any(f => f.EndsWith(".onnx", StringComparison.OrdinalIgnoreCase)))
             engines.Add(RifeEngine.TensorRT);
 
-        // Check for NCNN files
-        if (Directory.GetFiles(rifeModelDir, "*.bin").Length > 0 &&
-            Directory.GetFiles(rifeModelDir, "*.param").Length > 0)
+        // Check for NCNN files - case-insensitive
+        if (Directory.EnumerateFiles(rifeModelDir).Any(f => f.EndsWith(".bin", StringComparison.OrdinalIgnoreCase)) &&
+            Directory.EnumerateFiles(rifeModelDir).Any(f => f.EndsWith(".param", StringComparison.OrdinalIgnoreCase)))
             engines.Add(RifeEngine.NCNN);
 
         return engines;
