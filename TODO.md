@@ -182,7 +182,9 @@ Issues from PR #2 review and code audit. See: https://github.com/CheapNud/CheapU
 
 ### Dead Code Cleanup
 
-- [ ] **Remove or integrate `RifeVariantDetector`** - Currently registered but never used in job processing
+- [x] ~~**Remove or integrate `RifeVariantDetector`**~~ - KEEP for future Linux/Docker support
+  - SVP not available on Linux, so Practical-RIFE with standalone executables (`rife-tensorrt.exe`, `rife-ncnn-vulkan.exe`) is needed
+  - Variant detection will be useful for Ubuntu Worker Service deployment
 - [x] **Remove `RifeOptions.BuildArguments()`** - Removed (was for CLI RIFE)
 - [x] ~~**Remove GitHub RIFE code path**~~ - NOT dead code: supports Practical-RIFE as SVP alternative
 
@@ -194,7 +196,8 @@ Issues from PR #2 review and code audit. See: https://github.com/CheapNud/CheapU
 
 ### Future Enhancement Ideas
 
-- [ ] **Model detection** - Detect which ONNX models are actually installed, adjust UI options
+- [x] **Model detection** - `RifeInterpolationService.GetAvailableModels()` scans ONNX files
+  - `UpscaleProcessorService.ProcessRifeAsync()` pre-validates and falls back to available model
 - [ ] **Engine auto-selection** - TensorRT if ONNX available, NCNN_VK if only .bin/.param
 - [ ] **Integrate `DependencyChecker` results** - Use detected RIFE path to initialize service at runtime
 

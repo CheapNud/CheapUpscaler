@@ -24,6 +24,68 @@ public class RifeInterpolationService
     /// </summary>
     public bool IsConfigured => !string.IsNullOrEmpty(_rifeFolderPath) && Directory.Exists(_rifeFolderPath);
 
+    /// <summary>
+    /// Gets the list of available RIFE ONNX models installed in the SVP models folder.
+    /// Returns model names in the format expected by RifeOptions (e.g., "rife-v4.6", "rife-v4.22-lite")
+    /// </summary>
+    public List<string> GetAvailableModels()
+    {
+        if (!IsConfigured)
+            return [];
+
+        var rifeModelDir = Path.Combine(_rifeFolderPath, "models", "rife");
+        if (!Directory.Exists(rifeModelDir))
+            return [];
+
+        return Directory.GetFiles(rifeModelDir, "*.onnx")
+            .Select(f => MapOnnxFilenameToModelName(Path.GetFileNameWithoutExtension(f)))
+            .Where(name => name != null)
+            .Cast<string>()
+            .Distinct()
+            .OrderBy(name => name)
+            .ToList();
+    }
+
+    /// <summary>
+    /// Checks if a specific model is available for use
+    /// </summary>
+    public bool IsModelAvailable(string modelName)
+    {
+        var available = GetAvailableModels();
+        return available.Contains(modelName, StringComparer.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Maps ONNX filename (without extension) to our model name format
+    /// </summary>
+    private static string? MapOnnxFilenameToModelName(string onnxName)
+    {
+        // Map SVP's ONNX filenames to our model names
+        // e.g., "rife_v4.6" -> "rife-v4.6", "rife_v4.22_lite" -> "rife-v4.22-lite"
+        return onnxName.ToLower() switch
+        {
+            "rife_v4.6" => "rife-v4.6",
+            "rife_v4.14" => "rife-v4.14",
+            "rife_v4.14_lite" => "rife-v4.14-lite",
+            "rife_v4.15" => "rife-v4.15",
+            "rife_v4.15_lite" => "rife-v4.15-lite",
+            "rife_v4.16" => "rife-v4.16",
+            "rife_v4.16_lite" => "rife-v4.16-lite",
+            "rife_v4.17" => "rife-v4.17",
+            "rife_v4.18" => "rife-v4.18",
+            "rife_v4.20" => "rife-v4.20",
+            "rife_v4.21" => "rife-v4.21",
+            "rife_v4.22" => "rife-v4.22",
+            "rife_v4.22_lite" => "rife-v4.22-lite",
+            "rife_v4.25" => "rife-v4.25",
+            "rife_v4.25_lite" => "rife-v4.25-lite",
+            "rife_v4.26" => "rife-v4.26",
+            "rife_v4.9_uhd" => "rife-UHD",
+            "rife_v4.8_anime" => "rife-anime",
+            _ => null // Unknown model
+        };
+    }
+
     public RifeInterpolationService(string rifeFolderPath = "", string pythonPath = "")
     {
         _rifeFolderPath = rifeFolderPath;
@@ -285,10 +347,11 @@ public class RifeInterpolationService
                 }
 
                 // Now run the actual processing with vspipe piped to FFmpeg
+                // -p enables progress reporting to stderr (Frame: X/Y format)
                 var vspipeProcess = new ProcessStartInfo
                 {
                     FileName = vspipePath,
-                    Arguments = $"\"{tempScriptPath}\" - -c y4m",
+                    Arguments = $"-p \"{tempScriptPath}\" - -c y4m",
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
                     UseShellExecute = false,
@@ -762,15 +825,19 @@ public class RifeInterpolationService
     }
 
     /// <summary>
-    /// Get available RIFE models (for compatibility)
+    /// Get all supported RIFE model names (static list of known models).
+    /// Use GetAvailableModels() instance method to get actually installed models.
     /// </summary>
-    public static string[] GetAvailableModels()
+    public static string[] GetSupportedModels()
     {
         return
         [
             "rife-v4.6",
             "rife-v4.14",
+            "rife-v4.14-lite",
             "rife-v4.15",
+            "rife-v4.15-lite",
+            "rife-v4.16",
             "rife-v4.16-lite",
             "rife-v4.17",
             "rife-v4.18",
@@ -866,20 +933,24 @@ public class RifeInterpolationService
         var rifeModelDir = Path.Combine(svpModelPath, "rife");
 
         // Map model names to (modelId, onnxFilename) - validate file exists before TensorRT compilation
+        // vsmlrt uses integer model IDs: base versions are 3-digit (e.g., 416), lite versions append 1 (e.g., 4161)
         var (modelId, modelFilename) = options.ModelName switch
         {
             "rife-v4.6" => (46, "rife_v4.6.onnx"),
             "rife-v4.14" => (414, "rife_v4.14.onnx"),
+            "rife-v4.14-lite" => (4141, "rife_v4.14_lite.onnx"),
             "rife-v4.15" => (415, "rife_v4.15.onnx"),
-            "rife-v4.16-lite" => (416, "rife_v4.16_lite.onnx"),
+            "rife-v4.15-lite" => (4151, "rife_v4.15_lite.onnx"),
+            "rife-v4.16" => (416, "rife_v4.16.onnx"),
+            "rife-v4.16-lite" => (4161, "rife_v4.16_lite.onnx"),
             "rife-v4.17" => (417, "rife_v4.17.onnx"),
             "rife-v4.18" => (418, "rife_v4.18.onnx"),
             "rife-v4.20" => (420, "rife_v4.20.onnx"),
             "rife-v4.21" => (421, "rife_v4.21.onnx"),
             "rife-v4.22" => (422, "rife_v4.22.onnx"),
-            "rife-v4.22-lite" => (422, "rife_v4.22_lite.onnx"),
+            "rife-v4.22-lite" => (4221, "rife_v4.22_lite.onnx"),
             "rife-v4.25" => (425, "rife_v4.25.onnx"),
-            "rife-v4.25-lite" => (425, "rife_v4.25_lite.onnx"),
+            "rife-v4.25-lite" => (4251, "rife_v4.25_lite.onnx"),
             "rife-v4.26" => (426, "rife_v4.26.onnx"),
             "rife-UHD" => (49, "rife_v4.9_uhd.onnx"),
             "rife-anime" => (48, "rife_v4.8_anime.onnx"),
@@ -905,7 +976,7 @@ public class RifeInterpolationService
                 $"{availableMsg}");
         }
 
-        Debug.WriteLine($"[RIFE] Using model: {modelFilename} (ID: {modelId})");
+        Debug.WriteLine($"[RIFE] Using model ID {modelId} for: {modelPath}");
 
         // Determine engine backend
         var engineBackend = options.Engine switch
@@ -998,6 +1069,8 @@ try:
         device_id={options.GpuId}
     )
 
+    # Use integer model ID - vsmlrt only accepts integers, not string paths
+    # Model IDs: base versions are 3-digit (e.g., 416), lite versions append 1 (e.g., 4161)
     clip = RIFE(clip, {multiplier}, 1.0, None, None, None, {modelId}, backend, {(options.TtaMode ? "True" : "False")}, {(options.UhdMode ? "True" : "False")}, {sceneDetect})
 
 except Exception as e:
