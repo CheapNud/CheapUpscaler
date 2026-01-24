@@ -1,3 +1,4 @@
+using CheapHelpers.MediaProcessing;
 using CheapUpscaler.Core;
 using CheapUpscaler.Shared.Data;
 using CheapUpscaler.Shared.Services;
@@ -20,6 +21,9 @@ builder.Host.UseSerilog();
 // Add services
 builder.Services.AddControllers();
 builder.Services.AddOpenApi();
+
+// CheapHelpers.MediaProcessing services (platform-aware)
+builder.Services.AddMediaProcessing();
 
 // Platform-specific services (auto-detects Windows vs Linux)
 builder.Services.AddPlatformServices();

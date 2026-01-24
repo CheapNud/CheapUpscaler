@@ -1,16 +1,17 @@
-<Project Sdk="Microsoft.NET.Sdk.Web">
+<Project Sdk="Microsoft.NET.Sdk.Razor">
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <OutputType>Exe</OutputType>
+    <AddRazorSupportForMvc>true</AddRazorSupportForMvc>
+    <OutputType>WinExe</OutputType>
     <BlazorDisableThrowNavigationException>true</BlazorDisableThrowNavigationException>
   </PropertyGroup>
 
   <ItemGroup>
     <!-- Desktop framework with Avalonia + Photino + Blazor -->
-    <PackageReference Include="CheapAvaloniaBlazor" Version="1.1.4" />
+    <PackageReference Include="CheapAvaloniaBlazor" Version="1.2.0" />
     <!-- UI component library -->
     <PackageReference Include="MudBlazor" Version="8.15.0" />
     <!-- Database for job persistence -->
