@@ -1,12 +1,16 @@
 <Project Sdk="Microsoft.NET.Sdk.Razor">
 
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
+    <!-- Windows desktop app - requires net10.0-windows for platform services -->
+    <TargetFramework>net10.0-windows</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <AddRazorSupportForMvc>true</AddRazorSupportForMvc>
     <OutputType>WinExe</OutputType>
     <BlazorDisableThrowNavigationException>true</BlazorDisableThrowNavigationException>
+
+    <!-- Define WINDOWS constant for conditional compilation -->
+    <DefineConstants>$(DefineConstants);WINDOWS</DefineConstants>
   </PropertyGroup>
 
   <ItemGroup>
@@ -16,6 +20,8 @@
     <PackageReference Include="MudBlazor" Version="8.15.0" />
     <!-- Database for job persistence -->
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.2" />
+    <!-- Media processing (Windows services: SVP, WMI detection) -->
+    <PackageReference Include="CheapHelpers.MediaProcessing" Version="2.0.0" />
   </ItemGroup>
 
   <ItemGroup>

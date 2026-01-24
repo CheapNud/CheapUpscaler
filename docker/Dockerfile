@@ -8,13 +8,12 @@ FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 
 WORKDIR /src
 
-# Copy solution and project files
-COPY *.sln ./
+# Copy project files for restore optimization
 COPY CheapUpscaler.Shared/*.csproj ./CheapUpscaler.Shared/
 COPY CheapUpscaler.Core/*.csproj ./CheapUpscaler.Core/
 COPY CheapUpscaler.Worker/*.csproj ./CheapUpscaler.Worker/
 
-# Restore dependencies
+# Restore dependencies (targets net10.0 for Linux)
 RUN dotnet restore CheapUpscaler.Worker/CheapUpscaler.Worker.csproj -r linux-x64
 
 # Copy source files

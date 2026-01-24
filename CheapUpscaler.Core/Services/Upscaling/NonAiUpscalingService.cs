@@ -2,7 +2,9 @@ using SysProcess = System.Diagnostics.Process;
 using System.Diagnostics;
 using FFMpegCore;
 using CheapUpscaler.Core.Models;
+#if WINDOWS
 using CheapHelpers.MediaProcessing.Services;
+#endif
 using Microsoft.Extensions.Logging;
 
 namespace CheapUpscaler.Core.Services.Upscaling;
@@ -16,18 +18,24 @@ namespace CheapUpscaler.Core.Services.Upscaling;
 /// </summary>
 public class NonAiUpscalingService
 {
-    private readonly SvpDetectionService _svpDetection;
+#if WINDOWS
+    private readonly SvpDetectionService? _svpDetection;
+#endif
     private readonly ILogger<NonAiUpscalingService>? _logger;
 
+#if WINDOWS
     public NonAiUpscalingService(SvpDetectionService svpDetection, ILogger<NonAiUpscalingService>? logger = null)
     {
         _svpDetection = svpDetection;
         _logger = logger;
         ConfigureFFmpegPath();
     }
+#endif
 
-    public NonAiUpscalingService() : this(new SvpDetectionService(), null)
+    public NonAiUpscalingService(ILogger<NonAiUpscalingService>? logger = null)
     {
+        _logger = logger;
+        ConfigureFFmpegPath();
     }
 
     /// <summary>
@@ -35,21 +43,29 @@ public class NonAiUpscalingService
     /// </summary>
     private void ConfigureFFmpegPath()
     {
-        // Auto-detect FFmpeg path
-        var ffmpegPath = _svpDetection.GetPreferredFFmpegPath(useSvpEncoders: true);
-        if (ffmpegPath != null && Path.IsPathRooted(ffmpegPath))
+#if WINDOWS
+        // Auto-detect FFmpeg path (prefer SVP's FFmpeg on Windows)
+        if (_svpDetection != null)
         {
-            var directory = Path.GetDirectoryName(ffmpegPath);
-            if (directory != null)
+            var ffmpegPath = _svpDetection.GetPreferredFFmpegPath(useSvpEncoders: true);
+            if (ffmpegPath != null && Path.IsPathRooted(ffmpegPath))
             {
-                var ffprobeInSameDir = Path.Combine(directory, "ffprobe.exe");
-                if (File.Exists(ffprobeInSameDir))
+                var directory = Path.GetDirectoryName(ffmpegPath);
+                if (directory != null)
                 {
-                    _logger?.LogDebug("[NonAiUpscalingService] Using auto-detected FFmpeg: {Directory}", directory);
-                    GlobalFFOptions.Configure(new FFOptions { BinaryFolder = directory });
+                    var ffprobeInSameDir = Path.Combine(directory, "ffprobe.exe");
+                    if (File.Exists(ffprobeInSameDir))
+                    {
+                        _logger?.LogDebug("[NonAiUpscalingService] Using auto-detected FFmpeg: {Directory}", directory);
+                        GlobalFFOptions.Configure(new FFOptions { BinaryFolder = directory });
+                        return;
+                    }
                 }
             }
         }
+#endif
+        // Linux or no SVP detected: rely on system PATH FFmpeg
+        _logger?.LogDebug("[NonAiUpscalingService] Using system PATH FFmpeg");
     }
 
     /// <summary>
@@ -261,7 +277,13 @@ public class NonAiUpscalingService
     {
         try
         {
-            var ffmpegPath = _svpDetection.GetPreferredFFmpegPath(useSvpEncoders: true) ?? "ffmpeg";
+            string ffmpegPath = "ffmpeg";
+#if WINDOWS
+            if (_svpDetection != null)
+            {
+                ffmpegPath = _svpDetection.GetPreferredFFmpegPath(useSvpEncoders: true) ?? "ffmpeg";
+            }
+#endif
 
             var process = new SysProcess
             {

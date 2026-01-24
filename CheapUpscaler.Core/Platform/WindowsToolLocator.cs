@@ -1,3 +1,4 @@
+#if WINDOWS
 using System.Diagnostics;
 using System.Text.RegularExpressions;
 using CheapHelpers.MediaProcessing.Services;
@@ -219,3 +220,4 @@ public class WindowsToolLocator(
         return null;
     }
 }
+#endif

@@ -8,7 +8,9 @@ using CheapUpscaler.Core.Services.RealESRGAN;
 using CheapUpscaler.Core.Services.Upscaling;
 using CheapUpscaler.Core.Platform;
 using CheapUpscaler.Shared.Platform;
+#if WINDOWS
 using CheapHelpers.MediaProcessing.Services;
+#endif
 
 namespace CheapUpscaler.Core;
 
@@ -29,16 +31,13 @@ public static class ServiceCollectionExtensions
     /// </summary>
     public static IServiceCollection AddPlatformServices(this IServiceCollection services)
     {
-        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-        {
-            services.AddSingleton<IPlatformPaths, WindowsPlatformPaths>();
-            services.AddSingleton<IToolLocator, WindowsToolLocator>();
-        }
-        else
-        {
-            services.AddSingleton<IPlatformPaths, LinuxPlatformPaths>();
-            services.AddSingleton<IToolLocator, LinuxToolLocator>();
-        }
+#if WINDOWS
+        services.AddSingleton<IPlatformPaths, WindowsPlatformPaths>();
+        services.AddSingleton<IToolLocator, WindowsToolLocator>();
+#else
+        services.AddSingleton<IPlatformPaths, LinuxPlatformPaths>();
+        services.AddSingleton<IToolLocator, LinuxToolLocator>();
+#endif
 
         return services;
     }
@@ -101,15 +100,24 @@ public static class ServiceCollectionExtensions
     }
 
     /// <summary>
-    /// Factory method to create RifeInterpolationService with SVP-detected paths
+    /// Factory method to create RifeInterpolationService with platform-detected paths
     /// </summary>
     private static RifeInterpolationService CreateRifeService(IServiceProvider serviceProvider)
     {
+#if WINDOWS
         var svpDetection = serviceProvider.GetRequiredService<SvpDetectionService>();
         var (rifePath, pythonPath) = ResolveRifePaths(null, null, svpDetection);
         return new RifeInterpolationService(rifePath, pythonPath);
+#else
+        // On Linux, RIFE paths must be configured via environment or config
+        // SVP is Windows-only, so we use empty paths (RIFE unavailable without config)
+        var logger = serviceProvider.GetService<ILogger<RifeInterpolationService>>();
+        logger?.LogWarning("[RIFE] Linux detected - RIFE paths must be configured manually. SVP is Windows-only.");
+        return new RifeInterpolationService("", "");
+#endif
     }
 
+#if WINDOWS
     /// <summary>
     /// Resolves RIFE paths using provided configuration and SVP detection fallback.
     /// Shared logic used by both Core factory and Blazor settings-aware factory.
@@ -155,4 +163,5 @@ public static class ServiceCollectionExtensions
         logger?.LogWarning("[RIFE] No RIFE installation found. Install SVP 4 Pro or configure RifeFolderPath in Settings.");
         return ("", "");
     }
+#endif
 }

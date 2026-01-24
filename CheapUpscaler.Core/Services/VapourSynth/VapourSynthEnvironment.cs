@@ -2,7 +2,9 @@ using SysProcess = System.Diagnostics.Process;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
+#if WINDOWS
 using CheapHelpers.MediaProcessing.Services;
+#endif
 using Microsoft.Extensions.Logging;
 
 namespace CheapUpscaler.Core.Services.VapourSynth;
@@ -10,11 +12,13 @@ namespace CheapUpscaler.Core.Services.VapourSynth;
 /// <summary>
 /// Manages VapourSynth environment detection and validation
 /// Consolidates Python + vspipe detection for all AI services
-/// Priority order: SVP Python > System PATH Python
+/// Priority order: SVP Python (Windows only) > System PATH Python
 /// </summary>
 public class VapourSynthEnvironment : IVapourSynthEnvironment
 {
-    private readonly SvpDetectionService _svpDetection;
+#if WINDOWS
+    private readonly SvpDetectionService? _svpDetection;
+#endif
     private readonly ILogger<VapourSynthEnvironment>? _logger;
     private bool _isInitialized;
     private string _pythonPath = string.Empty;
@@ -23,9 +27,16 @@ public class VapourSynthEnvironment : IVapourSynthEnvironment
     private string? _pythonVersion;
     private string? _vapourSynthVersion;
 
+#if WINDOWS
     public VapourSynthEnvironment(SvpDetectionService svpDetection, ILogger<VapourSynthEnvironment>? logger = null)
     {
         _svpDetection = svpDetection;
+        _logger = logger;
+    }
+#endif
+
+    public VapourSynthEnvironment(ILogger<VapourSynthEnvironment>? logger = null)
+    {
         _logger = logger;
     }
 
@@ -87,29 +98,30 @@ public class VapourSynthEnvironment : IVapourSynthEnvironment
     {
         _logger?.LogDebug("=== VapourSynth Environment Detection ===");
 
-        // 1. Try SVP's Python first (preferred)
-        var svp = _svpDetection.DetectSvpInstallation();
-        if (svp.IsInstalled && !string.IsNullOrEmpty(svp.PythonPath) && File.Exists(svp.PythonPath))
+#if WINDOWS
+        // 1. Try SVP's Python first (preferred, Windows-only)
+        if (_svpDetection != null)
         {
-            _pythonPath = svp.PythonPath;
-            _isUsingSvpPython = true;
-            _logger?.LogDebug("Using SVP's Python: {PythonPath}", _pythonPath);
-        }
-        else
-        {
-            // 2. Fall back to system PATH
-            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            var svp = _svpDetection.DetectSvpInstallation();
+            if (svp.IsInstalled && !string.IsNullOrEmpty(svp.PythonPath) && File.Exists(svp.PythonPath))
             {
-                _pythonPath = IsPythonInPath("python") ? "python" :
-                              IsPythonInPath("python3") ? "python3" : "python";
+                _pythonPath = svp.PythonPath;
+                _isUsingSvpPython = true;
+                _logger?.LogDebug("Using SVP's Python: {PythonPath}", _pythonPath);
             }
             else
             {
-                _pythonPath = "python3";
+                DetectSystemPython();
             }
-            _isUsingSvpPython = false;
-            _logger?.LogDebug("Using system PATH Python: {PythonPath}", _pythonPath);
         }
+        else
+        {
+            DetectSystemPython();
+        }
+#else
+        // Linux: Use system Python directly
+        DetectSystemPython();
+#endif
 
         // Detect vspipe
         _vspipePath = FindVsPipe();
@@ -129,6 +141,21 @@ public class VapourSynthEnvironment : IVapourSynthEnvironment
         _logger?.LogDebug("Python version: {PythonVersion}", _pythonVersion ?? "unknown");
         _logger?.LogDebug("VapourSynth version: {VapourSynthVersion}", _vapourSynthVersion ?? "unknown");
         _logger?.LogDebug("==========================================");
+    }
+
+    private void DetectSystemPython()
+    {
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            _pythonPath = IsPythonInPath("python") ? "python" :
+                          IsPythonInPath("python3") ? "python3" : "python";
+        }
+        else
+        {
+            _pythonPath = "python3";
+        }
+        _isUsingSvpPython = false;
+        _logger?.LogDebug("Using system PATH Python: {PythonPath}", _pythonPath);
     }
 
     private bool IsPythonInPath(string pythonCommand)
