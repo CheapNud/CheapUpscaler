@@ -21,7 +21,7 @@
     <!-- Database for job persistence -->
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.2" />
     <!-- Media processing (Windows services: SVP, WMI detection) -->
-    <PackageReference Include="CheapHelpers.MediaProcessing" Version="2.0.0" />
+    <PackageReference Include="CheapHelpers.MediaProcessing" Version="2.0.1" />
   </ItemGroup>
 
   <ItemGroup>
