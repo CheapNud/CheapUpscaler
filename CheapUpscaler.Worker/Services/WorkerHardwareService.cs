@@ -10,18 +10,20 @@ namespace CheapUpscaler.Worker.Services;
 /// </summary>
 public class WorkerHardwareService(ILogger<WorkerHardwareService> logger) : IHardwareService
 {
-    public Task<HardwareCapabilities> DetectHardwareAsync()
+    public async Task<HardwareCapabilities> DetectHardwareAsync()
     {
         try
         {
+            var hasNvidia = CheckNvidiaInContainer();
+            var nvencAvailable = hasNvidia && await CheckNvencAvailableAsync();
+
             var capabilities = new HardwareCapabilities
             {
                 CpuName = GetCpuInfo(),
                 CpuCoreCount = Environment.ProcessorCount,
                 AvailableGpus = DetectGpusInContainer(),
-                // In Docker, these typically aren't available unless using NVIDIA container runtime
-                HasNvidiaGpu = CheckNvidiaInContainer(),
-                NvencAvailable = false, // Would need nvidia-smi access
+                HasNvidiaGpu = hasNvidia,
+                NvencAvailable = nvencAvailable,
                 IsIntelCpu = Environment.GetEnvironmentVariable("PROCESSOR_IDENTIFIER")?.Contains("Intel") ?? false
             };
 
@@ -31,19 +33,19 @@ public class WorkerHardwareService(ILogger<WorkerHardwareService> logger) : IHar
                 capabilities.GpuName = capabilities.AvailableGpus[0];
             }
 
-            logger.LogInformation("Hardware detected: CPU={CpuName}, Cores={Cores}, NVIDIA={HasNvidia}",
-                capabilities.CpuName, capabilities.CpuCoreCount, capabilities.HasNvidiaGpu);
+            logger.LogInformation("Hardware detected: CPU={CpuName}, Cores={Cores}, NVIDIA={HasNvidia}, NVENC={Nvenc}",
+                capabilities.CpuName, capabilities.CpuCoreCount, capabilities.HasNvidiaGpu, capabilities.NvencAvailable);
 
-            return Task.FromResult(capabilities);
+            return capabilities;
         }
         catch (Exception ex)
         {
             logger.LogWarning(ex, "Error detecting hardware");
-            return Task.FromResult(new HardwareCapabilities
+            return new HardwareCapabilities
             {
                 CpuName = "Unknown",
                 CpuCoreCount = Environment.ProcessorCount
-            });
+            };
         }
     }
 
@@ -115,5 +117,60 @@ public class WorkerHardwareService(ILogger<WorkerHardwareService> logger) : IHar
         }
 
         return false;
+    }
+
+    private async Task<bool> CheckNvencAvailableAsync()
+    {
+        try
+        {
+            // Try ffmpeg encoder check first - most reliable
+            var ffmpegResult = await RunCommandAsync("ffmpeg", "-hide_banner -encoders 2>&1 | grep -i nvenc");
+            if (!string.IsNullOrEmpty(ffmpegResult) && ffmpegResult.Contains("nvenc", StringComparison.OrdinalIgnoreCase))
+            {
+                logger.LogInformation("NVENC detected via ffmpeg encoders");
+                return true;
+            }
+
+            // Fallback: check nvidia-smi for encoder capability
+            var nvidiaSmiResult = await RunCommandAsync("nvidia-smi", "--query-gpu=encoder.stats.averageFps --format=csv,noheader");
+            if (nvidiaSmiResult != null && !nvidiaSmiResult.Contains("error", StringComparison.OrdinalIgnoreCase))
+            {
+                logger.LogInformation("NVENC detected via nvidia-smi");
+                return true;
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogDebug(ex, "Error checking NVENC availability");
+        }
+
+        return false;
+    }
+
+    private static async Task<string?> RunCommandAsync(string command, string arguments)
+    {
+        try
+        {
+            using var process = new System.Diagnostics.Process();
+            process.StartInfo = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = OperatingSystem.IsWindows() ? "cmd.exe" : "/bin/sh",
+                Arguments = OperatingSystem.IsWindows() ? $"/c {command} {arguments}" : $"-c \"{command} {arguments}\"",
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+
+            process.Start();
+            var output = await process.StandardOutput.ReadToEndAsync();
+            await process.WaitForExitAsync();
+
+            return output;
+        }
+        catch
+        {
+            return null;
+        }
     }
 }

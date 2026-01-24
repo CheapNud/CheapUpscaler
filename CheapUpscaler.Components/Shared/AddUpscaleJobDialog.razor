@@ -1,4 +1,6 @@
 @inject IFileDialogService FileDialog
+@inject IFileBrowserService? FileBrowser
+@inject IDialogService DialogService
 @inject ISnackbar Snackbar
 @inject IVideoInfoService VideoInfoService
 
@@ -16,7 +18,7 @@
                 <MudText Typo="Typo.subtitle2">Source Video</MudText>
                 <MudStack Row="true" Spacing="2">
                     <MudTextField @bind-Value="_sourcePath"
-                                  Placeholder="@(FileDialog.SupportsNativeDialogs ? "Select a video file..." : "Enter video file path...")"
+                                  Placeholder="@(FileDialog.SupportsNativeDialogs ? "Select a video file..." : "Enter video file path or browse...")"
                                   ReadOnly="@FileDialog.SupportsNativeDialogs"
                                   Variant="Variant.Outlined"
                                   Adornment="Adornment.Start"
@@ -30,6 +32,22 @@
                                    StartIcon="@Icons.Material.Filled.FolderOpen"
                                    OnClick="@BrowseSourceFile">
                             Browse
+                        </MudButton>
+                    }
+                    else if (FileBrowser != null)
+                    {
+                        <MudButton Variant="Variant.Filled"
+                                   Color="Color.Primary"
+                                   StartIcon="@Icons.Material.Filled.FolderOpen"
+                                   OnClick="@BrowseServerSourceFile">
+                            Browse
+                        </MudButton>
+                        <MudButton Variant="Variant.Outlined"
+                                   Color="Color.Primary"
+                                   StartIcon="@Icons.Material.Filled.Refresh"
+                                   OnClick="@LoadVideoInfo"
+                                   Disabled="@(string.IsNullOrWhiteSpace(_sourcePath))">
+                            Load
                         </MudButton>
                     }
                     else
@@ -166,6 +184,15 @@
                             Browse
                         </MudButton>
                     }
+                    else if (FileBrowser != null)
+                    {
+                        <MudButton Variant="Variant.Outlined"
+                                   Color="Color.Default"
+                                   StartIcon="@Icons.Material.Filled.FolderOpen"
+                                   OnClick="@BrowseServerOutputPath">
+                            Browse
+                        </MudButton>
+                    }
                 </MudStack>
             </MudStack>
         </MudStack>
@@ -262,6 +289,56 @@
         if (!string.IsNullOrEmpty(result))
         {
             _outputPath = result;
+        }
+    }
+
+    private async Task BrowseServerSourceFile()
+    {
+        var parameters = new DialogParameters<FileBrowserDialog>
+        {
+            { x => x.Mode, FileBrowserDialog.FileBrowserMode.OpenFile },
+            { x => x.FileExtensions, new[] { "mp4", "mkv", "avi", "mov", "webm", "wmv", "flv" } }
+        };
+
+        var options = new DialogOptions
+        {
+            MaxWidth = MaxWidth.Medium,
+            FullWidth = true,
+            CloseOnEscapeKey = true
+        };
+
+        var dialog = await DialogService.ShowAsync<FileBrowserDialog>("Select Video File", parameters, options);
+        var result = await dialog.Result;
+
+        if (result is { Canceled: false, Data: string path })
+        {
+            _sourcePath = path;
+            await LoadVideoInfo();
+        }
+    }
+
+    private async Task BrowseServerOutputPath()
+    {
+        var parameters = new DialogParameters<FileBrowserDialog>
+        {
+            { x => x.Mode, FileBrowserDialog.FileBrowserMode.SaveFile },
+            { x => x.FileExtensions, new[] { "mp4", "mkv" } },
+            { x => x.DefaultFileName, Path.GetFileName(_outputPath) }
+        };
+
+        var options = new DialogOptions
+        {
+            MaxWidth = MaxWidth.Medium,
+            FullWidth = true,
+            CloseOnEscapeKey = true
+        };
+
+        var dialog = await DialogService.ShowAsync<FileBrowserDialog>("Save Output File", parameters, options);
+        var result = await dialog.Result;
+
+        if (result is { Canceled: false, Data: string path })
+        {
+            _outputPath = path;
         }
     }
 

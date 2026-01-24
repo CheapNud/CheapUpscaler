@@ -29,6 +29,7 @@ builder.Services.AddMudServices();
 // Register web implementations for platform abstractions
 builder.Services.AddScoped<IFileDialogService, WebFileDialogService>();
 builder.Services.AddScoped<ISystemService, WebSystemService>();
+builder.Services.AddScoped<IFileBrowserService, ServerFileBrowserService>();
 
 // Add API services
 builder.Services.AddControllers();
@@ -113,9 +114,10 @@ app.MapControllers();
 // Health check endpoint
 app.MapGet("/health", () => Results.Ok(new { Status = "Healthy", Timestamp = DateTime.UtcNow }));
 
-// Map Blazor components
+// Map Blazor components (include Components library for routable pages)
 app.MapRazorComponents<App>()
-    .AddInteractiveServerRenderMode();
+    .AddInteractiveServerRenderMode()
+    .AddAdditionalAssemblies(typeof(CheapUpscaler.Components.Pages.Home).Assembly);
 
 Log.Information("CheapUpscaler Worker starting...");
 Log.Information("Data path: {DataPath}", dataPath);
