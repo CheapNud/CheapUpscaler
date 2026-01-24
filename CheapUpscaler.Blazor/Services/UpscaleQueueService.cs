@@ -1,7 +1,8 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
-using CheapUpscaler.Blazor.Data;
-using CheapUpscaler.Blazor.Models;
+using CheapUpscaler.Shared.Data;
+using CheapUpscaler.Shared.Models;
+using CheapUpscaler.Shared.Services;
 using Microsoft.Extensions.Hosting;
 
 namespace CheapUpscaler.Blazor.Services;

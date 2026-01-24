@@ -1,13 +1,17 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
+    <!-- Multi-target for cross-platform support -->
+    <TargetFrameworks>net10.0;net10.0-windows</TargetFrameworks>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
 
-    <!-- Platform Support - Windows Only (TensorRT, NVENC, WMI) -->
-    <RuntimeIdentifiers>win-x64;win-x86;win-arm64</RuntimeIdentifiers>
+    <!-- Platform Support -->
+    <RuntimeIdentifiers>win-x64;win-x86;win-arm64;linux-x64;linux-arm64</RuntimeIdentifiers>
     <NoWarn>$(NoWarn);CA1416</NoWarn>
+
+    <!-- Define WINDOWS constant for Windows target -->
+    <DefineConstants Condition="'$(TargetFramework)' == 'net10.0-windows'">$(DefineConstants);WINDOWS</DefineConstants>
   </PropertyGroup>
 
   <ItemGroup>
@@ -16,7 +20,14 @@
     <!-- FFmpeg integration -->
     <PackageReference Include="FFMpegCore" Version="5.4.0" />
     <!-- Media processing shared library -->
-    <PackageReference Include="CheapHelpers.MediaProcessing" Version="1.2.0" />
+    <PackageReference Include="CheapHelpers.MediaProcessing" Version="2.0.1" />
+    <!-- Logging abstractions for ILogger -->
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Shared platform abstractions -->
+    <ProjectReference Include="..\CheapUpscaler.Shared\CheapUpscaler.Shared.csproj" />
   </ItemGroup>
 
 </Project>

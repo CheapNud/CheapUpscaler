@@ -1,31 +1,34 @@
-using System.Diagnostics;
 using System.Text.Json;
-using CheapUpscaler.Shared.Models;
 using CheapUpscaler.Core.Models;
 using CheapUpscaler.Core.Services.RIFE;
 using CheapUpscaler.Core.Services.RealCUGAN;
 using CheapUpscaler.Core.Services.RealESRGAN;
 using CheapUpscaler.Core.Services.Upscaling;
-using static CheapUpscaler.Blazor.Components.Shared.AddUpscaleJobDialog;
+using CheapUpscaler.Shared.Models;
+using CheapUpscaler.Shared.Platform;
+using Microsoft.Extensions.Logging;
 
-namespace CheapUpscaler.Blazor.Services;
+namespace CheapUpscaler.Worker.Services;
 
 /// <summary>
-/// Orchestrates video upscaling by mapping job settings to Core services
+/// Worker-specific implementation of upscale processing
+/// Uses Core services with platform-agnostic tool detection
 /// </summary>
-public class UpscaleProcessorService(
+public class WorkerProcessorService(
     RifeInterpolationService rifeService,
     RealCuganService realCuganService,
     RealEsrganService realEsrganService,
     NonAiUpscalingService nonAiService,
-    ISettingsService settingsService) : IUpscaleProcessorService
+    IToolLocator toolLocator,
+    IConfiguration configuration,
+    ILogger<WorkerProcessorService> logger) : IWorkerProcessorService
 {
     public async Task<bool> ProcessJobAsync(
         UpscaleJob job,
         IProgress<double>? progress = null,
         CancellationToken cancellationToken = default)
     {
-        Debug.WriteLine($"Processing job {job.JobId} - Type: {job.UpscaleType}");
+        logger.LogInformation("Processing job {JobId} - Type: {UpscaleType}", job.JobId, job.UpscaleType);
 
         return job.UpscaleType switch
         {
@@ -42,22 +45,18 @@ public class UpscaleProcessorService(
         IProgress<double>? progress,
         CancellationToken cancellationToken)
     {
-        // Pre-validate RIFE is configured
         if (!rifeService.IsConfigured)
         {
             throw new InvalidOperationException(
-                "RIFE is not configured. Install SVP 4 Pro or configure RifeFolderPath in Settings.");
+                "RIFE is not configured. Ensure RIFE models are available in the configured path.");
         }
 
         var jobSettings = DeserializeSettings<RifeJobSettings>(job.SettingsJson);
-        var appSettings = await settingsService.LoadAsync();
 
-        // Map quality preset to model, with fallback to first available
         var availableModels = rifeService.GetAvailableModels();
         if (availableModels.Count == 0)
         {
-            throw new InvalidOperationException(
-                "No RIFE ONNX models found. Check your SVP installation or RIFE folder path.");
+            throw new InvalidOperationException("No RIFE models found.");
         }
 
         var preferredModel = jobSettings.QualityPreset switch
@@ -68,33 +67,26 @@ public class UpscaleProcessorService(
             _ => "rife-v4.6"
         };
 
-        // Use preferred model if available, otherwise fall back to first available
         var modelName = availableModels.Contains(preferredModel, StringComparer.OrdinalIgnoreCase)
             ? preferredModel
             : availableModels[0];
 
-        if (modelName != preferredModel)
-        {
-            Debug.WriteLine($"RIFE: Preferred model '{preferredModel}' not available, using '{modelName}' instead");
-        }
-
-        // Auto-select engine based on available model files (ONNX = TensorRT, bin/param = NCNN)
         var selectedEngine = rifeService.AutoSelectEngine();
 
         var options = new RifeOptions
         {
             InterpolationMultiplier = jobSettings.Multiplier,
-            TargetFps = jobSettings.TargetFps,
+            TargetFps = jobSettings.TargetFps.HasValue ? (int)jobSettings.TargetFps.Value : 60,
             Engine = selectedEngine,
             GpuId = 0,
             ModelName = modelName
         };
 
-        Debug.WriteLine($"RIFE: {jobSettings.Multiplier}x, Target FPS: {jobSettings.TargetFps}, Model: {options.ModelName}, Engine: {selectedEngine}");
+        logger.LogInformation("RIFE: {Multiplier}x, Target FPS: {TargetFps}, Model: {ModelName}, Engine: {Engine}",
+            jobSettings.Multiplier, jobSettings.TargetFps, options.ModelName, selectedEngine);
 
-        var ffmpegPath = !string.IsNullOrEmpty(appSettings.ToolPaths.FFmpegPath)
-            ? appSettings.ToolPaths.FFmpegPath
-            : null;
+        var ffmpegInfo = await toolLocator.DetectFFmpegAsync(cancellationToken);
+        var ffmpegPath = ffmpegInfo?.Path ?? configuration["Tools:FFmpegPath"];
 
         return await rifeService.InterpolateVideoAsync(
             job.SourceVideoPath,
@@ -111,7 +103,6 @@ public class UpscaleProcessorService(
         CancellationToken cancellationToken)
     {
         var jobSettings = DeserializeSettings<RealCuganJobSettings>(job.SettingsJson);
-        var appSettings = await settingsService.LoadAsync();
 
         var options = new RealCuganOptions
         {
@@ -123,19 +114,17 @@ public class UpscaleProcessorService(
             Backend = 0 // TensorRT
         };
 
-        // Validate noise/scale compatibility
         if (!options.IsNoiseScaleCompatible())
         {
             throw new InvalidOperationException(
-                $"Noise level {options.Noise} is not compatible with scale {options.Scale}. " +
-                "Noise levels 1 and 2 only work with 2x scale.");
+                $"Noise level {options.Noise} is not compatible with scale {options.Scale}.");
         }
 
-        Debug.WriteLine($"RealCUGAN: Scale {options.Scale}x, Noise: {options.Noise}, FP16: {options.UseFp16}");
+        logger.LogInformation("RealCUGAN: Scale {Scale}x, Noise: {Noise}, FP16: {UseFp16}",
+            options.Scale, options.Noise, options.UseFp16);
 
-        var ffmpegPath = !string.IsNullOrEmpty(appSettings.ToolPaths.FFmpegPath)
-            ? appSettings.ToolPaths.FFmpegPath
-            : null;
+        var ffmpegInfo = await toolLocator.DetectFFmpegAsync(cancellationToken);
+        var ffmpegPath = ffmpegInfo?.Path ?? configuration["Tools:FFmpegPath"];
 
         return await realCuganService.UpscaleVideoAsync(
             job.SourceVideoPath,
@@ -152,7 +141,6 @@ public class UpscaleProcessorService(
         CancellationToken cancellationToken)
     {
         var jobSettings = DeserializeSettings<RealEsrganJobSettings>(job.SettingsJson);
-        var appSettings = await settingsService.LoadAsync();
 
         var options = new RealEsrganOptions
         {
@@ -166,11 +154,11 @@ public class UpscaleProcessorService(
             NumThreads = 1
         };
 
-        Debug.WriteLine($"RealESRGAN: Model {options.ModelName}, Scale {options.ScaleFactor}x, Tile: {options.TileSize}, FP16: {options.UseFp16}");
+        logger.LogInformation("RealESRGAN: Model {ModelName}, Scale {Scale}x, Tile: {TileSize}, FP16: {UseFp16}",
+            options.ModelName, options.ScaleFactor, options.TileSize, options.UseFp16);
 
-        var ffmpegPath = !string.IsNullOrEmpty(appSettings.ToolPaths.FFmpegPath)
-            ? appSettings.ToolPaths.FFmpegPath
-            : null;
+        var ffmpegInfo = await toolLocator.DetectFFmpegAsync(cancellationToken);
+        var ffmpegPath = ffmpegInfo?.Path ?? configuration["Tools:FFmpegPath"];
 
         return await realEsrganService.UpscaleVideoAsync(
             job.SourceVideoPath,
@@ -187,11 +175,9 @@ public class UpscaleProcessorService(
         CancellationToken cancellationToken)
     {
         var jobSettings = DeserializeSettings<NonAiJobSettings>(job.SettingsJson);
-
-        // Map algorithm name to lowercase for the service
         var algorithm = jobSettings.Algorithm.ToLowerInvariant();
 
-        Debug.WriteLine($"NonAI: Algorithm {algorithm}, Scale {jobSettings.Scale}x");
+        logger.LogInformation("NonAI: Algorithm {Algorithm}, Scale {Scale}x", algorithm, jobSettings.Scale);
 
         return await nonAiService.UpscaleVideoAsync(
             job.SourceVideoPath,
@@ -213,10 +199,38 @@ public class UpscaleProcessorService(
         {
             return JsonSerializer.Deserialize<T>(json) ?? new T();
         }
-        catch (JsonException ex)
+        catch (JsonException)
         {
-            Debug.WriteLine($"Failed to deserialize settings: {ex.Message}");
             return new T();
         }
     }
+}
+
+// Job settings DTOs (simplified for Worker - could be moved to Shared if needed)
+public record RifeJobSettings
+{
+    public int Multiplier { get; init; } = 2;
+    public double? TargetFps { get; init; }
+    public string QualityPreset { get; init; } = "Medium";
+}
+
+public record RealCuganJobSettings
+{
+    public int NoiseLevel { get; init; } = -1;
+    public int Scale { get; init; } = 2;
+    public bool UseFp16 { get; init; } = true;
+}
+
+public record RealEsrganJobSettings
+{
+    public string Model { get; init; } = "realesrgan-x4plus-anime";
+    public int Scale { get; init; } = 4;
+    public int TileSize { get; init; } = 0;
+    public bool UseFp16 { get; init; } = true;
+}
+
+public record NonAiJobSettings
+{
+    public string Algorithm { get; init; } = "lanczos";
+    public int Scale { get; init; } = 2;
 }

@@ -1,4 +1,4 @@
-namespace CheapUpscaler.Blazor.Models;
+namespace CheapUpscaler.Shared.Models;
 
 /// <summary>
 /// Status of an upscale job in the queue

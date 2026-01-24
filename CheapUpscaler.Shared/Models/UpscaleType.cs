@@ -1,4 +1,4 @@
-namespace CheapUpscaler.Blazor.Models;
+namespace CheapUpscaler.Shared.Models;
 
 /// <summary>
 /// Type of upscaling/processing to apply

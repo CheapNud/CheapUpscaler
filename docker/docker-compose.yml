@@ -1,0 +1,71 @@
+# CheapUpscaler Worker - Docker Compose Configuration
+# Requires nvidia-docker for GPU support
+
+services:
+  cheapupscaler:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: cheapupscaler-worker
+    restart: unless-stopped
+
+    # GPU Support (nvidia-docker)
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu, compute, video]
+
+    # Network configuration
+    ports:
+      - "5080:5080"
+
+    # Volume mounts
+    volumes:
+      # Input folder - read-only watch folder
+      - ./input:/data/input:ro
+      # Output folder - processed videos
+      - ./output:/data/output
+      # Models folder - RIFE/ESRGAN models (mounted, not embedded)
+      - ./models:/data/models:ro
+      # Database persistence
+      - cheapupscaler-db:/data/db
+      # Logs
+      - ./logs:/app/logs
+
+    # Environment configuration
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - Worker__WatchFolderEnabled=true
+      - Worker__MaxConcurrentJobs=1
+      - Worker__DefaultUpscaleType=RealEsrgan
+      # RIFE defaults
+      - Worker__Defaults__Rife__Multiplier=2
+      - Worker__Defaults__Rife__QualityPreset=Medium
+      # RealCUGAN defaults
+      - Worker__Defaults__RealCugan__Scale=2
+      - Worker__Defaults__RealCugan__NoiseLevel=-1
+      - Worker__Defaults__RealCugan__UseFp16=true
+      # RealESRGAN defaults
+      - Worker__Defaults__RealEsrgan__Model=realesrgan-x4plus-anime
+      - Worker__Defaults__RealEsrgan__Scale=4
+      - Worker__Defaults__RealEsrgan__TileSize=0
+      - Worker__Defaults__RealEsrgan__UseFp16=true
+
+    # Health check
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+# Named volumes for persistent data
+volumes:
+  cheapupscaler-db:
+    driver: local
+
+# Optional: Create required host directories on first run
+# Run: mkdir -p input output models logs

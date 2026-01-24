@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using CheapUpscaler.Core.Services.VapourSynth;
@@ -5,7 +6,11 @@ using CheapUpscaler.Core.Services.RIFE;
 using CheapUpscaler.Core.Services.RealCUGAN;
 using CheapUpscaler.Core.Services.RealESRGAN;
 using CheapUpscaler.Core.Services.Upscaling;
+using CheapUpscaler.Core.Platform;
+using CheapUpscaler.Shared.Platform;
+#if WINDOWS
 using CheapHelpers.MediaProcessing.Services;
+#endif
 
 namespace CheapUpscaler.Core;
 
@@ -21,10 +26,30 @@ namespace CheapUpscaler.Core;
 public static class ServiceCollectionExtensions
 {
     /// <summary>
+    /// Add platform-specific services (IPlatformPaths, IToolLocator)
+    /// Automatically detects Windows vs Linux and registers appropriate implementations
+    /// </summary>
+    public static IServiceCollection AddPlatformServices(this IServiceCollection services)
+    {
+#if WINDOWS
+        services.AddSingleton<IPlatformPaths, WindowsPlatformPaths>();
+        services.AddSingleton<IToolLocator, WindowsToolLocator>();
+#else
+        services.AddSingleton<IPlatformPaths, LinuxPlatformPaths>();
+        services.AddSingleton<IToolLocator, LinuxToolLocator>();
+#endif
+
+        return services;
+    }
+
+    /// <summary>
     /// Add all CheapUpscaler AI upscaling services to the service collection
     /// </summary>
     public static IServiceCollection AddUpscalerServices(this IServiceCollection services)
     {
+        // Platform-specific services
+        services.AddPlatformServices();
+
         // VapourSynth environment (shared by AI services)
         services.AddSingleton<IVapourSynthEnvironment, VapourSynthEnvironment>();
 
@@ -75,15 +100,24 @@ public static class ServiceCollectionExtensions
     }
 
     /// <summary>
-    /// Factory method to create RifeInterpolationService with SVP-detected paths
+    /// Factory method to create RifeInterpolationService with platform-detected paths
     /// </summary>
     private static RifeInterpolationService CreateRifeService(IServiceProvider serviceProvider)
     {
+#if WINDOWS
         var svpDetection = serviceProvider.GetRequiredService<SvpDetectionService>();
         var (rifePath, pythonPath) = ResolveRifePaths(null, null, svpDetection);
         return new RifeInterpolationService(rifePath, pythonPath);
+#else
+        // On Linux, RIFE paths must be configured via environment or config
+        // SVP is Windows-only, so we use empty paths (RIFE unavailable without config)
+        var logger = serviceProvider.GetService<ILogger<RifeInterpolationService>>();
+        logger?.LogWarning("[RIFE] Linux detected - RIFE paths must be configured manually. SVP is Windows-only.");
+        return new RifeInterpolationService("", "");
+#endif
     }
 
+#if WINDOWS
     /// <summary>
     /// Resolves RIFE paths using provided configuration and SVP detection fallback.
     /// Shared logic used by both Core factory and Blazor settings-aware factory.
@@ -129,4 +163,5 @@ public static class ServiceCollectionExtensions
         logger?.LogWarning("[RIFE] No RIFE installation found. Install SVP 4 Pro or configure RifeFolderPath in Settings.");
         return ("", "");
     }
+#endif
 }
