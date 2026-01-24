@@ -1,6 +1,7 @@
 using CheapAvaloniaBlazor.Extensions;
 using CheapHelpers.MediaProcessing.Services;
 using CheapUpscaler.Blazor.Services;
+using CheapUpscaler.Components.Services;
 using CheapUpscaler.Core;
 using CheapUpscaler.Shared.Data;
 using CheapUpscaler.Shared.Services;
@@ -41,9 +42,15 @@ class Program
 
         // Register Blazor services
         builder.Services.AddSingleton<DependencyChecker>();
+        builder.Services.AddSingleton<IDependencyChecker>(sp => sp.GetRequiredService<DependencyChecker>());
         builder.Services.AddSingleton<ISettingsService, SettingsService>();
         builder.Services.AddSingleton<IUpscaleProcessorService, UpscaleProcessorService>();
         builder.Services.AddSingleton<IVideoInfoService, VideoInfoService>();
+
+        // Register platform-specific services for Components
+        builder.Services.AddScoped<IFileDialogService, DesktopFileDialogService>();
+        builder.Services.AddScoped<ISystemService, DesktopSystemService>();
+        builder.Services.AddSingleton<IHardwareService, DesktopHardwareService>();
 
         // Configure database (SQLite in AppData)
         var appDataPath = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);

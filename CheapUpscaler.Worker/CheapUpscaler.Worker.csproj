@@ -26,10 +26,17 @@
     <PackageReference Include="Serilog.AspNetCore" Version="10.0.0" />
     <PackageReference Include="Serilog.Sinks.Console" Version="6.1.1" />
     <PackageReference Include="Serilog.Sinks.File" Version="7.0.0" />
+
+    <!-- Blazor Server UI -->
+    <PackageReference Include="MudBlazor" Version="8.15.0" />
+
+    <!-- Media processing (for video info, hardware detection, etc.) -->
+    <PackageReference Include="CheapHelpers.MediaProcessing" Version="2.0.1" />
   </ItemGroup>
 
   <ItemGroup>
     <!-- Project references -->
+    <ProjectReference Include="..\CheapUpscaler.Components\CheapUpscaler.Components.csproj" />
     <ProjectReference Include="..\CheapUpscaler.Core\CheapUpscaler.Core.csproj" />
     <ProjectReference Include="..\CheapUpscaler.Shared\CheapUpscaler.Shared.csproj" />
   </ItemGroup>

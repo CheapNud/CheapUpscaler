@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Text.RegularExpressions;
-using CheapUpscaler.Blazor.Models;
+using CheapUpscaler.Components.Models;
+using CheapUpscaler.Components.Services;
 using CheapUpscaler.Core.Services.VapourSynth;
 using CheapUpscaler.Core.Services.RIFE;
 using CheapHelpers.MediaProcessing.Services;
@@ -13,7 +14,7 @@ namespace CheapUpscaler.Blazor.Services;
 public class DependencyChecker(
     IVapourSynthEnvironment vapourSynthEnvironment,
     ExecutableDetectionService executableDetectionService,
-    SvpDetectionService svpDetectionService)
+    SvpDetectionService svpDetectionService) : IDependencyChecker
 {
     /// <summary>
     /// Known DLL file names for SVP and TensorRT detection

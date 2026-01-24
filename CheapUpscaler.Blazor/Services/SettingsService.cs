@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Text.Json;
-using CheapUpscaler.Blazor.Models;
+using CheapUpscaler.Components.Models;
+using CheapUpscaler.Components.Services;
 
 namespace CheapUpscaler.Blazor.Services;
 
@@ -92,16 +93,3 @@ public class SettingsService : ISettingsService
     public string GetSettingsFilePath() => _settingsPath;
 }
 
-/// <summary>
-/// Interface for settings service
-/// </summary>
-public interface ISettingsService
-{
-    AppSettings Settings { get; }
-    event Action? SettingsChanged;
-    Task<AppSettings> LoadAsync();
-    Task SaveAsync();
-    Task SaveAsync(AppSettings settings);
-    Task ResetToDefaultsAsync();
-    string GetSettingsFilePath();
-}

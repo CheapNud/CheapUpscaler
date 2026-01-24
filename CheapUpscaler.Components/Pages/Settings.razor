@@ -1,0 +1,369 @@
+@page "/settings"
+@inject ISettingsService SettingsService
+@inject IFileDialogService FileDialog
+@inject ISnackbar Snackbar
+
+<PageTitle>Settings - CheapUpscaler</PageTitle>
+
+<MudText Typo="Typo.h4" GutterBottom="true">Settings</MudText>
+
+@if (_isLoading)
+{
+    <MudProgressLinear Indeterminate="true" Color="Color.Primary" Class="mb-4" />
+}
+else
+{
+    <MudGrid Spacing="4">
+        <!-- Left Column: Tool Paths & Queue Settings -->
+        <MudItem xs="12" md="6">
+            <MudStack Spacing="4">
+                <!-- Tool Paths -->
+                <MudPaper Elevation="2" Class="pa-4">
+                    <MudStack Spacing="3">
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                            <MudIcon Icon="@Icons.Material.Filled.Build" Color="Color.Primary" />
+                            <MudText Typo="Typo.h6">Tool Paths</MudText>
+                        </MudStack>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">
+                            @if (FileDialog.SupportsNativeDialogs)
+                            {
+                                <text>Leave empty to auto-detect. Override only if auto-detection fails.</text>
+                            }
+                            else
+                            {
+                                <text>Enter paths manually. Leave empty to auto-detect.</text>
+                            }
+                        </MudText>
+
+                        <MudStack Row="true" Spacing="2">
+                            <MudTextField @bind-Value="_settings.ToolPaths.VapourSynthPath"
+                                          Label="VapourSynth Path"
+                                          Placeholder="Auto-detect"
+                                          Variant="Variant.Outlined"
+                                          Style="flex-grow: 1;" />
+                            @if (FileDialog.SupportsNativeDialogs)
+                            {
+                                <MudIconButton Icon="@Icons.Material.Filled.FolderOpen"
+                                               OnClick="@(() => BrowseFolder(p => _settings.ToolPaths.VapourSynthPath = p))" />
+                            }
+                        </MudStack>
+
+                        <MudStack Row="true" Spacing="2">
+                            <MudTextField @bind-Value="_settings.ToolPaths.PythonPath"
+                                          Label="Python Path"
+                                          Placeholder="Auto-detect"
+                                          Variant="Variant.Outlined"
+                                          Style="flex-grow: 1;" />
+                            @if (FileDialog.SupportsNativeDialogs)
+                            {
+                                <MudIconButton Icon="@Icons.Material.Filled.FolderOpen"
+                                               OnClick="@(() => BrowseFile(p => _settings.ToolPaths.PythonPath = p, "Python Executable", ["exe"]))" />
+                            }
+                        </MudStack>
+
+                        <MudStack Row="true" Spacing="2">
+                            <MudTextField @bind-Value="_settings.ToolPaths.FFmpegPath"
+                                          Label="FFmpeg Path"
+                                          Placeholder="Auto-detect"
+                                          Variant="Variant.Outlined"
+                                          Style="flex-grow: 1;" />
+                            @if (FileDialog.SupportsNativeDialogs)
+                            {
+                                <MudIconButton Icon="@Icons.Material.Filled.FolderOpen"
+                                               OnClick="@(() => BrowseFile(p => _settings.ToolPaths.FFmpegPath = p, "FFmpeg Executable", ["exe"]))" />
+                            }
+                        </MudStack>
+
+                        <MudStack Row="true" Spacing="2">
+                            <MudTextField @bind-Value="_settings.ToolPaths.VspipePath"
+                                          Label="vspipe Path"
+                                          Placeholder="Auto-detect"
+                                          Variant="Variant.Outlined"
+                                          Style="flex-grow: 1;" />
+                            @if (FileDialog.SupportsNativeDialogs)
+                            {
+                                <MudIconButton Icon="@Icons.Material.Filled.FolderOpen"
+                                               OnClick="@(() => BrowseFile(p => _settings.ToolPaths.VspipePath = p, "vspipe Executable", ["exe"]))" />
+                            }
+                        </MudStack>
+                    </MudStack>
+                </MudPaper>
+
+                <!-- Queue Settings -->
+                <MudPaper Elevation="2" Class="pa-4">
+                    <MudStack Spacing="3">
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                            <MudIcon Icon="@Icons.Material.Filled.Queue" Color="Color.Primary" />
+                            <MudText Typo="Typo.h6">Queue Settings</MudText>
+                        </MudStack>
+
+                        <MudNumericField T="int"
+                                         @bind-Value="_settings.Queue.MaxConcurrentJobs"
+                                         Label="Max Concurrent Jobs"
+                                         Variant="Variant.Outlined"
+                                         Min="1"
+                                         Max="4"
+                                         HelperText="Usually 1 (GPU limited)" />
+
+                        <MudSwitch T="bool"
+                                   @bind-Value="_settings.Queue.AutoStartQueue"
+                                   Label="Auto-start queue when jobs are added"
+                                   Color="Color.Primary" />
+
+                        <MudStack Row="true" Spacing="2">
+                            <MudTextField @bind-Value="_settings.Queue.DefaultOutputDirectory"
+                                          Label="Default Output Directory"
+                                          Placeholder="Same as source"
+                                          Variant="Variant.Outlined"
+                                          Style="flex-grow: 1;" />
+                            @if (FileDialog.SupportsNativeDialogs)
+                            {
+                                <MudIconButton Icon="@Icons.Material.Filled.FolderOpen"
+                                               OnClick="@(() => BrowseFolder(p => _settings.Queue.DefaultOutputDirectory = p))" />
+                            }
+                        </MudStack>
+                    </MudStack>
+                </MudPaper>
+
+                <!-- UI Settings -->
+                <MudPaper Elevation="2" Class="pa-4">
+                    <MudStack Spacing="3">
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                            <MudIcon Icon="@Icons.Material.Filled.Palette" Color="Color.Primary" />
+                            <MudText Typo="Typo.h6">UI Settings</MudText>
+                        </MudStack>
+
+                        <MudSwitch T="bool"
+                                   @bind-Value="_settings.Ui.DarkMode"
+                                   Label="Dark Mode"
+                                   Color="Color.Primary" />
+
+                        <MudSwitch T="bool"
+                                   @bind-Value="_settings.Ui.ShowCompletionNotifications"
+                                   Label="Show completion notifications"
+                                   Color="Color.Primary" />
+
+                        <MudSwitch T="bool"
+                                   @bind-Value="_settings.Ui.PlayCompletionSound"
+                                   Label="Play sound on completion"
+                                   Color="Color.Primary" />
+                    </MudStack>
+                </MudPaper>
+            </MudStack>
+        </MudItem>
+
+        <!-- Right Column: Hardware Info & Default Settings -->
+        <MudItem xs="12" md="6">
+            <MudStack Spacing="4">
+                <!-- Hardware Info -->
+                <HardwareInfoCard />
+
+                <!-- Default RIFE Settings -->
+                <MudExpansionPanels>
+                    <MudExpansionPanel Text="Default RIFE Settings" Icon="@Icons.Material.Filled.Speed">
+                        <MudStack Spacing="2" Class="pa-2">
+                            <MudSelect T="int"
+                                       @bind-Value="_settings.DefaultSettings.Rife.Multiplier"
+                                       Label="Default Multiplier"
+                                       Variant="Variant.Outlined">
+                                <MudSelectItem Value="2">2x</MudSelectItem>
+                                <MudSelectItem Value="4">4x</MudSelectItem>
+                                <MudSelectItem Value="8">8x</MudSelectItem>
+                            </MudSelect>
+
+                            <MudNumericField T="int"
+                                             @bind-Value="_settings.DefaultSettings.Rife.TargetFps"
+                                             Label="Default Target FPS"
+                                             Variant="Variant.Outlined"
+                                             Min="24"
+                                             Max="240" />
+
+                            <MudSelect T="string"
+                                       @bind-Value="_settings.DefaultSettings.Rife.QualityPreset"
+                                       Label="Default Quality Preset"
+                                       Variant="Variant.Outlined">
+                                <MudSelectItem Value="@("Fast")">Fast</MudSelectItem>
+                                <MudSelectItem Value="@("Medium")">Medium</MudSelectItem>
+                                <MudSelectItem Value="@("High")">High</MudSelectItem>
+                            </MudSelect>
+                        </MudStack>
+                    </MudExpansionPanel>
+
+                    <MudExpansionPanel Text="Default Real-CUGAN Settings" Icon="@Icons.Material.Filled.Animation">
+                        <MudStack Spacing="2" Class="pa-2">
+                            <MudSelect T="int"
+                                       @bind-Value="_settings.DefaultSettings.RealCugan.Scale"
+                                       Label="Default Scale"
+                                       Variant="Variant.Outlined">
+                                <MudSelectItem Value="2">2x</MudSelectItem>
+                                <MudSelectItem Value="3">3x</MudSelectItem>
+                                <MudSelectItem Value="4">4x</MudSelectItem>
+                            </MudSelect>
+
+                            <MudSelect T="int"
+                                       @bind-Value="_settings.DefaultSettings.RealCugan.NoiseLevel"
+                                       Label="Default Noise Level"
+                                       Variant="Variant.Outlined">
+                                <MudSelectItem Value="-1">-1 (Conservative)</MudSelectItem>
+                                <MudSelectItem Value="0">0 (Light)</MudSelectItem>
+                                <MudSelectItem Value="1">1 (Moderate)</MudSelectItem>
+                                <MudSelectItem Value="2">2 (Strong)</MudSelectItem>
+                                <MudSelectItem Value="3">3 (Maximum)</MudSelectItem>
+                            </MudSelect>
+
+                            <MudSwitch T="bool"
+                                       @bind-Value="_settings.DefaultSettings.RealCugan.UseFp16"
+                                       Label="Use FP16 by default"
+                                       Color="Color.Primary" />
+                        </MudStack>
+                    </MudExpansionPanel>
+
+                    <MudExpansionPanel Text="Default Real-ESRGAN Settings" Icon="@Icons.Material.Filled.Photo">
+                        <MudStack Spacing="2" Class="pa-2">
+                            <MudSelect T="string"
+                                       @bind-Value="_settings.DefaultSettings.RealEsrgan.Model"
+                                       Label="Default Model"
+                                       Variant="Variant.Outlined">
+                                <MudSelectItem Value="@("RealESRGAN_x4plus")">RealESRGAN x4plus</MudSelectItem>
+                                <MudSelectItem Value="@("RealESRGAN_x4plus_anime_6B")">RealESRGAN x4plus Anime</MudSelectItem>
+                                <MudSelectItem Value="@("RealESRGAN_x2plus")">RealESRGAN x2plus</MudSelectItem>
+                                <MudSelectItem Value="@("realesr-animevideov3")">RealESR AnimeVideo v3</MudSelectItem>
+                            </MudSelect>
+
+                            <MudSelect T="int"
+                                       @bind-Value="_settings.DefaultSettings.RealEsrgan.Scale"
+                                       Label="Default Scale"
+                                       Variant="Variant.Outlined">
+                                <MudSelectItem Value="2">2x</MudSelectItem>
+                                <MudSelectItem Value="4">4x</MudSelectItem>
+                            </MudSelect>
+
+                            <MudNumericField T="int"
+                                             @bind-Value="_settings.DefaultSettings.RealEsrgan.TileSize"
+                                             Label="Default Tile Size"
+                                             Variant="Variant.Outlined"
+                                             Min="128"
+                                             Max="1024"
+                                             Step="64" />
+
+                            <MudSwitch T="bool"
+                                       @bind-Value="_settings.DefaultSettings.RealEsrgan.UseFp16"
+                                       Label="Use FP16 by default"
+                                       Color="Color.Primary" />
+                        </MudStack>
+                    </MudExpansionPanel>
+
+                    <MudExpansionPanel Text="Default Non-AI Settings" Icon="@Icons.Material.Filled.Tune">
+                        <MudStack Spacing="2" Class="pa-2">
+                            <MudSelect T="string"
+                                       @bind-Value="_settings.DefaultSettings.NonAi.Algorithm"
+                                       Label="Default Algorithm"
+                                       Variant="Variant.Outlined">
+                                <MudSelectItem Value="@("Lanczos")">Lanczos</MudSelectItem>
+                                <MudSelectItem Value="@("xBR")">xBR</MudSelectItem>
+                                <MudSelectItem Value="@("HQx")">HQx</MudSelectItem>
+                                <MudSelectItem Value="@("Bicubic")">Bicubic</MudSelectItem>
+                            </MudSelect>
+
+                            <MudSelect T="int"
+                                       @bind-Value="_settings.DefaultSettings.NonAi.Scale"
+                                       Label="Default Scale"
+                                       Variant="Variant.Outlined">
+                                <MudSelectItem Value="2">2x</MudSelectItem>
+                                <MudSelectItem Value="3">3x</MudSelectItem>
+                                <MudSelectItem Value="4">4x</MudSelectItem>
+                            </MudSelect>
+                        </MudStack>
+                    </MudExpansionPanel>
+                </MudExpansionPanels>
+            </MudStack>
+        </MudItem>
+    </MudGrid>
+
+    <!-- Action Buttons -->
+    <MudStack Row="true" Justify="Justify.FlexEnd" Spacing="2" Class="mt-4">
+        <MudButton Variant="Variant.Outlined"
+                   Color="Color.Default"
+                   StartIcon="@Icons.Material.Filled.Restore"
+                   OnClick="@ResetToDefaults">
+            Reset to Defaults
+        </MudButton>
+        <MudButton Variant="Variant.Filled"
+                   Color="Color.Primary"
+                   StartIcon="@Icons.Material.Filled.Save"
+                   OnClick="@SaveSettings"
+                   Disabled="@_isSaving">
+            @if (_isSaving)
+            {
+                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+            }
+            Save Settings
+        </MudButton>
+    </MudStack>
+
+    <!-- Settings File Location -->
+    <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-4">
+        Settings file: @SettingsService.GetSettingsFilePath()
+    </MudText>
+}
+
+@code {
+    private AppSettings _settings = new();
+    private bool _isLoading = true;
+    private bool _isSaving;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _settings = await SettingsService.LoadAsync();
+        _isLoading = false;
+    }
+
+    private async Task SaveSettings()
+    {
+        _isSaving = true;
+        try
+        {
+            await SettingsService.SaveAsync(_settings);
+            Snackbar.Add("Settings saved successfully", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error saving settings: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private async Task ResetToDefaults()
+    {
+        _settings = new AppSettings();
+        await SettingsService.ResetToDefaultsAsync();
+        Snackbar.Add("Settings reset to defaults", Severity.Info);
+    }
+
+    private async Task BrowseFolder(Action<string> setter)
+    {
+        var result = await FileDialog.OpenFolderAsync();
+        if (!string.IsNullOrEmpty(result))
+        {
+            setter(result);
+        }
+    }
+
+    private async Task BrowseFile(Action<string> setter, string title, string[] extensions)
+    {
+        var options = new FileDialogOptions
+        {
+            Title = title,
+            Extensions = extensions
+        };
+
+        var result = await FileDialog.OpenFileAsync(options);
+        if (!string.IsNullOrEmpty(result))
+        {
+            setter(result);
+        }
+    }
+}

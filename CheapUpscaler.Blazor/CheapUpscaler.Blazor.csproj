@@ -25,6 +25,8 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Shared UI components library -->
+    <ProjectReference Include="..\CheapUpscaler.Components\CheapUpscaler.Components.csproj" />
     <!-- Core upscaling services -->
     <ProjectReference Include="..\CheapUpscaler.Core\CheapUpscaler.Core.csproj" />
     <!-- Shared models, data layer, and platform abstractions -->

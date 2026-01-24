@@ -1,15 +1,15 @@
-using System.Diagnostics;
-using CheapHelpers.MediaProcessing.Services;
 using CheapUpscaler.Components.Models;
 using CheapUpscaler.Components.Services;
 using FFMpegCore;
+using Microsoft.Extensions.Logging;
 
-namespace CheapUpscaler.Blazor.Services;
+namespace CheapUpscaler.Worker.Services;
 
 /// <summary>
-/// Extracts video metadata using FFprobe via FFMpegCore
+/// Extracts video metadata using FFprobe via FFMpegCore.
+/// Optimized for Docker/headless environments where FFmpeg is in PATH.
 /// </summary>
-public class VideoInfoService(ExecutableDetectionService executableDetection) : IVideoInfoService
+public class WorkerVideoInfoService(ILogger<WorkerVideoInfoService> logger) : IVideoInfoService
 {
     private bool _isConfigured;
 
@@ -17,7 +17,7 @@ public class VideoInfoService(ExecutableDetectionService executableDetection) : 
     {
         if (!File.Exists(filePath))
         {
-            Debug.WriteLine($"Video file not found: {filePath}");
+            logger.LogWarning("Video file not found: {FilePath}", filePath);
             return null;
         }
 
@@ -28,14 +28,14 @@ public class VideoInfoService(ExecutableDetectionService executableDetection) : 
             var mediaInfo = await FFProbe.AnalyseAsync(filePath);
             if (mediaInfo == null)
             {
-                Debug.WriteLine($"FFProbe returned null for: {filePath}");
+                logger.LogWarning("FFProbe returned null for: {FilePath}", filePath);
                 return null;
             }
 
             var videoStream = mediaInfo.PrimaryVideoStream;
             if (videoStream == null)
             {
-                Debug.WriteLine($"No video stream found in: {filePath}");
+                logger.LogWarning("No video stream found in: {FilePath}", filePath);
                 return null;
             }
 
@@ -61,7 +61,7 @@ public class VideoInfoService(ExecutableDetectionService executableDetection) : 
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"Error extracting video info: {ex.Message}");
+            logger.LogError(ex, "Error extracting video info from {FilePath}", filePath);
             return null;
         }
     }
@@ -70,7 +70,7 @@ public class VideoInfoService(ExecutableDetectionService executableDetection) : 
     {
         if (!File.Exists(filePath))
         {
-            Debug.WriteLine($"Video file not found: {filePath}");
+            logger.LogWarning("Video file not found: {FilePath}", filePath);
             return false;
         }
 
@@ -103,7 +103,7 @@ public class VideoInfoService(ExecutableDetectionService executableDetection) : 
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"Error generating thumbnail: {ex.Message}");
+            logger.LogError(ex, "Error generating thumbnail for {FilePath}", filePath);
             return false;
         }
     }
@@ -112,7 +112,8 @@ public class VideoInfoService(ExecutableDetectionService executableDetection) : 
     {
         if (_isConfigured) return;
 
-        // Try to find FFmpeg/FFprobe from various sources
+        // In Docker, ffmpeg is typically in PATH (/usr/bin/ffmpeg)
+        // Try common locations first
         var ffmpegPath = FindFFmpegPath();
         if (!string.IsNullOrEmpty(ffmpegPath))
         {
@@ -123,36 +124,55 @@ public class VideoInfoService(ExecutableDetectionService executableDetection) : 
                 {
                     options.BinaryFolder = directory;
                 });
-                Debug.WriteLine($"FFMpegCore configured with path: {directory}");
+                logger.LogInformation("FFMpegCore configured with path: {Directory}", directory);
             }
+        }
+        else
+        {
+            // Assume ffmpeg is in PATH (typical for Docker)
+            logger.LogInformation("FFmpeg not found in custom paths, assuming it's in PATH");
         }
 
         _isConfigured = true;
     }
 
-    private string? FindFFmpegPath()
+    private static string? FindFFmpegPath()
     {
-        // Check if ExecutableDetectionService can find it
-        var ffmpegPath = executableDetection.DetectFFmpeg(useSvpEncoders: false, customPath: null);
-        if (!string.IsNullOrEmpty(ffmpegPath))
+        // Check common Linux locations (for Docker)
+        if (!OperatingSystem.IsWindows())
         {
-            return ffmpegPath;
+            var linuxPaths = new[]
+            {
+                "/usr/bin/ffmpeg",
+                "/usr/local/bin/ffmpeg"
+            };
+
+            foreach (var path in linuxPaths)
+            {
+                if (File.Exists(path))
+                {
+                    return path;
+                }
+            }
         }
 
         // Check common Windows locations
-        var commonPaths = new[]
+        if (OperatingSystem.IsWindows())
         {
-            @"C:\ffmpeg\bin\ffmpeg.exe",
-            @"C:\Program Files\ffmpeg\bin\ffmpeg.exe",
-            @"C:\Program Files (x86)\ffmpeg\bin\ffmpeg.exe",
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ffmpeg", "bin", "ffmpeg.exe")
-        };
-
-        foreach (var path in commonPaths)
-        {
-            if (File.Exists(path))
+            var windowsPaths = new[]
             {
-                return path;
+                @"C:\ffmpeg\bin\ffmpeg.exe",
+                @"C:\Program Files\ffmpeg\bin\ffmpeg.exe",
+                @"C:\Program Files (x86)\ffmpeg\bin\ffmpeg.exe",
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ffmpeg", "bin", "ffmpeg.exe")
+            };
+
+            foreach (var path in windowsPaths)
+            {
+                if (File.Exists(path))
+                {
+                    return path;
+                }
             }
         }
 

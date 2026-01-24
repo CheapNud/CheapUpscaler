@@ -11,6 +11,7 @@ WORKDIR /src
 # Copy project files for restore optimization
 COPY CheapUpscaler.Shared/*.csproj ./CheapUpscaler.Shared/
 COPY CheapUpscaler.Core/*.csproj ./CheapUpscaler.Core/
+COPY CheapUpscaler.Components/*.csproj ./CheapUpscaler.Components/
 COPY CheapUpscaler.Worker/*.csproj ./CheapUpscaler.Worker/
 
 # Restore dependencies (targets net10.0 for Linux)
@@ -19,6 +20,7 @@ RUN dotnet restore CheapUpscaler.Worker/CheapUpscaler.Worker.csproj -r linux-x64
 # Copy source files
 COPY CheapUpscaler.Shared/ ./CheapUpscaler.Shared/
 COPY CheapUpscaler.Core/ ./CheapUpscaler.Core/
+COPY CheapUpscaler.Components/ ./CheapUpscaler.Components/
 COPY CheapUpscaler.Worker/ ./CheapUpscaler.Worker/
 
 # Build and publish
@@ -38,16 +40,21 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    # Python
+    # Python (including dev headers for VapourSynth compilation)
     python3.11 \
+    python3.11-dev \
     python3.11-venv \
     python3-pip \
     # FFmpeg
     ffmpeg \
-    # Build tools for VapourSynth plugins
+    # Build tools for VapourSynth
     build-essential \
     pkg-config \
     libffi-dev \
+    autoconf \
+    automake \
+    libtool \
+    nasm \
     # Video libraries
     libavcodec-dev \
     libavformat-dev \
@@ -68,19 +75,42 @@ RUN wget https://dot.net/v1/dotnet-install.sh -O dotnet-install.sh \
     && ln -s /usr/share/dotnet/dotnet /usr/bin/dotnet \
     && rm dotnet-install.sh
 
-# Set up Python
+# Set up Python and install Cython (needed for VapourSynth build)
 RUN ln -sf /usr/bin/python3.11 /usr/bin/python3 \
-    && ln -sf /usr/bin/python3.11 /usr/bin/python
+    && ln -sf /usr/bin/python3.11 /usr/bin/python \
+    && pip3 install --no-cache-dir cython
 
-# Install VapourSynth
+# Install zimg (VapourSynth dependency)
+RUN git clone --depth 1 --branch release-3.0.5 https://github.com/sekrit-twc/zimg.git /tmp/zimg \
+    && cd /tmp/zimg \
+    && ./autogen.sh \
+    && ./configure --prefix=/usr/local \
+    && make -j$(nproc) \
+    && make install \
+    && ldconfig \
+    && rm -rf /tmp/zimg
+
+# Install VapourSynth from source
+RUN git clone --depth 1 --branch R70 https://github.com/vapoursynth/vapoursynth.git /tmp/vapoursynth \
+    && cd /tmp/vapoursynth \
+    && ./autogen.sh \
+    && ./configure --prefix=/usr/local \
+    && make -j$(nproc) \
+    && make install \
+    && ldconfig \
+    && rm -rf /tmp/vapoursynth
+
+# Install VapourSynth Python bindings (now that library exists)
 RUN pip3 install --no-cache-dir vapoursynth
 
-# Install VapourSynth plugins for AI upscaling
-RUN pip3 install --no-cache-dir \
-    vsmlrt \
-    vsrealesrgan \
-    vspyplugin \
-    numpy
+# Install Python packages for video processing
+RUN pip3 install --no-cache-dir numpy
+
+# Note: vs-mlrt and other VapourSynth ML plugins should be mounted as volumes
+# or installed separately for GPU-accelerated upscaling
+# Set VapourSynth plugin path for future plugin mounting
+ENV VAPOURSYNTH_PLUGIN_PATH=/usr/local/lib/vapoursynth
+RUN mkdir -p /usr/local/lib/vapoursynth
 
 # Create application user
 RUN useradd -m -s /bin/bash appuser
@@ -114,7 +144,7 @@ COPY --from=build --chown=appuser:appuser /app/publish .
 # Switch to non-root user
 USER appuser
 
-# Expose API port
+# Expose port (serves both REST API and Blazor Server UI)
 EXPOSE 5080
 
 # Health check

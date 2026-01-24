@@ -1,12 +1,13 @@
 using System.Diagnostics;
 using System.Text.Json;
+using CheapUpscaler.Components.Services;
 using CheapUpscaler.Shared.Models;
 using CheapUpscaler.Core.Models;
 using CheapUpscaler.Core.Services.RIFE;
 using CheapUpscaler.Core.Services.RealCUGAN;
 using CheapUpscaler.Core.Services.RealESRGAN;
 using CheapUpscaler.Core.Services.Upscaling;
-using static CheapUpscaler.Blazor.Components.Shared.AddUpscaleJobDialog;
+using static CheapUpscaler.Components.Shared.AddUpscaleJobDialog;
 
 namespace CheapUpscaler.Blazor.Services;
 
