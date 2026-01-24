@@ -90,8 +90,8 @@ RUN git clone --depth 1 --branch release-3.0.5 https://github.com/sekrit-twc/zim
     && ldconfig \
     && rm -rf /tmp/zimg
 
-# Install VapourSynth from source
-RUN git clone --depth 1 --branch R70 https://github.com/vapoursynth/vapoursynth.git /tmp/vapoursynth \
+# Install VapourSynth from source (R73 to match pip bindings)
+RUN git clone --depth 1 --branch R73 https://github.com/vapoursynth/vapoursynth.git /tmp/vapoursynth \
     && cd /tmp/vapoursynth \
     && ./autogen.sh \
     && ./configure --prefix=/usr/local \
@@ -100,8 +100,8 @@ RUN git clone --depth 1 --branch R70 https://github.com/vapoursynth/vapoursynth.
     && ldconfig \
     && rm -rf /tmp/vapoursynth
 
-# Install VapourSynth Python bindings (now that library exists)
-RUN pip3 install --no-cache-dir vapoursynth
+# Install VapourSynth Python bindings (must match core version R73)
+RUN pip3 install --no-cache-dir vapoursynth==73
 
 # Install Python packages for video processing
 RUN pip3 install --no-cache-dir numpy

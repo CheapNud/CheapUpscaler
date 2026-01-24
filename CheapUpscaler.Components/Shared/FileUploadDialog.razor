@@ -1,0 +1,299 @@
+@inject IFileUploadService FileUpload
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <TitleContent>
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+            <MudIcon Icon="@Icons.Material.Filled.CloudUpload" />
+            <MudText Typo="Typo.h6">Upload Video File</MudText>
+        </MudStack>
+    </TitleContent>
+    <DialogContent>
+        <MudStack Spacing="3" Style="min-width: 500px;">
+            @if (!_isUploading)
+            {
+                <!-- File Selection -->
+                <MudFileUpload T="IBrowserFile"
+                               Accept="@GetAcceptString()"
+                               MaximumFileCount="1"
+                               FilesChanged="OnFileSelected">
+                    <ActivatorContent>
+                        <MudPaper Outlined="true"
+                                  Class="pa-8 d-flex flex-column align-center justify-center"
+                                  Style="min-height: 150px; cursor: pointer; border-style: dashed;">
+                            @if (_selectedFile == null)
+                            {
+                                <MudIcon Icon="@Icons.Material.Filled.CloudUpload"
+                                         Size="Size.Large"
+                                         Color="Color.Primary" />
+                                <MudText Typo="Typo.h6" Class="mt-2">
+                                    Drag & drop or click to select
+                                </MudText>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                    Supported formats: @string.Join(", ", FileUpload.AllowedExtensions.Select(e => $".{e}"))
+                                </MudText>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                    Max size: @FormatFileSize(FileUpload.MaxFileSizeBytes)
+                                </MudText>
+                            }
+                            else
+                            {
+                                <MudIcon Icon="@Icons.Material.Filled.VideoFile"
+                                         Size="Size.Large"
+                                         Color="Color.Success" />
+                                <MudText Typo="Typo.subtitle1" Class="mt-2">
+                                    @_selectedFile.Name
+                                </MudText>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                    @FormatFileSize(_selectedFile.Size)
+                                </MudText>
+                                @if (!string.IsNullOrEmpty(_validationError))
+                                {
+                                    <MudText Typo="Typo.caption" Color="Color.Error" Class="mt-1">
+                                        @_validationError
+                                    </MudText>
+                                }
+                            }
+                        </MudPaper>
+                    </ActivatorContent>
+                </MudFileUpload>
+
+                <!-- Recent Uploads -->
+                @if (_recentUploads.Count > 0)
+                {
+                    <MudDivider />
+                    <MudText Typo="Typo.subtitle2">Recent Uploads</MudText>
+                    <MudList T="UploadedFileInfo" Dense="true" Style="max-height: 150px; overflow-y: auto;">
+                        @foreach (var upload in _recentUploads)
+                        {
+                            <MudListItem T="UploadedFileInfo" OnClick="@(() => SelectRecentUpload(upload))">
+                                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Style="width: 100%;">
+                                    <MudIcon Icon="@Icons.Material.Filled.VideoFile" Size="Size.Small" />
+                                    <MudText Style="flex-grow: 1;">@upload.FileName</MudText>
+                                    <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                        @FormatFileSize(upload.Size)
+                                    </MudText>
+                                    <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                        @upload.UploadedAt.ToLocalTime().ToString("g")
+                                    </MudText>
+                                </MudStack>
+                            </MudListItem>
+                        }
+                    </MudList>
+                }
+            }
+            else
+            {
+                <!-- Upload Progress -->
+                <MudStack Spacing="2" Class="pa-4">
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                        <MudIcon Icon="@Icons.Material.Filled.VideoFile" />
+                        <MudText>@_selectedFile?.Name</MudText>
+                    </MudStack>
+
+                    <MudProgressLinear Value="@_uploadProgress.PercentComplete"
+                                       Color="Color.Primary"
+                                       Striped="true"
+                                       Size="Size.Large" />
+
+                    <MudStack Row="true" Justify="Justify.SpaceBetween">
+                        <MudText Typo="Typo.caption">
+                            @FormatFileSize(_uploadProgress.BytesUploaded) / @FormatFileSize(_uploadProgress.TotalBytes)
+                        </MudText>
+                        <MudText Typo="Typo.caption">
+                            @(_uploadProgress.PercentComplete.ToString("F1"))%
+                        </MudText>
+                    </MudStack>
+
+                    @if (_uploadProgress.BytesPerSecond > 0)
+                    {
+                        <MudStack Row="true" Justify="Justify.SpaceBetween">
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                @FormatFileSize((long)_uploadProgress.BytesPerSecond)/s
+                            </MudText>
+                            @if (_uploadProgress.EstimatedTimeRemaining.HasValue)
+                            {
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                    ETA: @FormatTimeRemaining(_uploadProgress.EstimatedTimeRemaining.Value)
+                                </MudText>
+                            }
+                        </MudStack>
+                    }
+                </MudStack>
+            }
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        @if (_isUploading)
+        {
+            <MudButton OnClick="CancelUpload" Color="Color.Error" Variant="Variant.Outlined">
+                Cancel Upload
+            </MudButton>
+        }
+        else
+        {
+            <MudButton OnClick="Cancel" Color="Color.Default">Cancel</MudButton>
+            <MudButton OnClick="StartUpload"
+                       Color="Color.Primary"
+                       Variant="Variant.Filled"
+                       Disabled="@(!CanUpload)"
+                       StartIcon="@Icons.Material.Filled.CloudUpload">
+                Upload
+            </MudButton>
+        }
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; } = null!;
+
+    [Parameter]
+    public string[]? FileExtensions { get; set; }
+
+    private IBrowserFile? _selectedFile;
+    private string? _validationError;
+    private bool _isUploading;
+    private CancellationTokenSource? _uploadCts;
+    private FileUploadProgress _uploadProgress = new() { BytesUploaded = 0, TotalBytes = 1 };
+    private List<UploadedFileInfo> _recentUploads = [];
+
+    private bool CanUpload => _selectedFile != null && string.IsNullOrEmpty(_validationError);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadRecentUploads();
+    }
+
+    private async Task LoadRecentUploads()
+    {
+        try
+        {
+            var uploads = await FileUpload.GetRecentUploadsAsync();
+            _recentUploads = uploads.ToList();
+        }
+        catch
+        {
+            // Ignore errors loading recent uploads
+        }
+    }
+
+    private string GetAcceptString()
+    {
+        var extensions = FileExtensions ?? FileUpload.AllowedExtensions;
+        return string.Join(",", extensions.Select(e => $".{e}"));
+    }
+
+    private void OnFileSelected(IBrowserFile file)
+    {
+        _selectedFile = file;
+        _validationError = null;
+
+        // Validate extension
+        var extension = Path.GetExtension(file.Name).TrimStart('.').ToLowerInvariant();
+        var allowedExtensions = FileExtensions ?? FileUpload.AllowedExtensions;
+        if (!allowedExtensions.Contains(extension, StringComparer.OrdinalIgnoreCase))
+        {
+            _validationError = $"File type '.{extension}' is not allowed. Supported: {string.Join(", ", allowedExtensions.Select(e => $".{e}"))}";
+            return;
+        }
+
+        // Validate size
+        if (file.Size > FileUpload.MaxFileSizeBytes)
+        {
+            _validationError = $"File size ({FormatFileSize(file.Size)}) exceeds maximum allowed ({FormatFileSize(FileUpload.MaxFileSizeBytes)})";
+        }
+    }
+
+    private void SelectRecentUpload(UploadedFileInfo upload)
+    {
+        // Return the path of an existing upload
+        MudDialog.Close(DialogResult.Ok(upload.FullPath));
+    }
+
+    private async Task StartUpload()
+    {
+        if (_selectedFile == null || !string.IsNullOrEmpty(_validationError))
+            return;
+
+        _isUploading = true;
+        _uploadCts = new CancellationTokenSource();
+        _uploadProgress = new FileUploadProgress { BytesUploaded = 0, TotalBytes = _selectedFile.Size };
+        StateHasChanged();
+
+        try
+        {
+            var progress = new Progress<FileUploadProgress>(p =>
+            {
+                _uploadProgress = p;
+                InvokeAsync(StateHasChanged);
+            });
+
+            // Stream the file with the large max size limit
+            await using var stream = _selectedFile.OpenReadStream(FileUpload.MaxFileSizeBytes);
+
+            var uploadResult = await FileUpload.UploadFileAsync(
+                stream,
+                _selectedFile.Name,
+                _selectedFile.Size,
+                progress,
+                _uploadCts.Token);
+
+            if (uploadResult.Success)
+            {
+                Snackbar.Add($"Uploaded: {_selectedFile.Name}", Severity.Success);
+                MudDialog.Close(DialogResult.Ok(uploadResult.ServerPath));
+            }
+            else
+            {
+                Snackbar.Add(uploadResult.ErrorMessage ?? "Upload failed", Severity.Error);
+                _isUploading = false;
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            Snackbar.Add("Upload cancelled", Severity.Warning);
+            _isUploading = false;
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Upload failed: {ex.Message}", Severity.Error);
+            _isUploading = false;
+        }
+        finally
+        {
+            _uploadCts?.Dispose();
+            _uploadCts = null;
+            StateHasChanged();
+        }
+    }
+
+    private void CancelUpload()
+    {
+        _uploadCts?.Cancel();
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+
+    private static string FormatFileSize(long bytes)
+    {
+        string[] sizes = ["B", "KB", "MB", "GB", "TB"];
+        int order = 0;
+        double size = bytes;
+        while (size >= 1024 && order < sizes.Length - 1)
+        {
+            order++;
+            size /= 1024;
+        }
+        return $"{size:0.##} {sizes[order]}";
+    }
+
+    private static string FormatTimeRemaining(TimeSpan time)
+    {
+        if (time.TotalHours >= 1)
+            return $"{time.Hours}h {time.Minutes}m";
+        if (time.TotalMinutes >= 1)
+            return $"{time.Minutes}m {time.Seconds}s";
+        return $"{time.Seconds}s";
+    }
+}

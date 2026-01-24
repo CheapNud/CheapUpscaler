@@ -30,6 +30,7 @@ builder.Services.AddMudServices();
 builder.Services.AddScoped<IFileDialogService, WebFileDialogService>();
 builder.Services.AddScoped<ISystemService, WebSystemService>();
 builder.Services.AddScoped<IFileBrowserService, ServerFileBrowserService>();
+builder.Services.AddScoped<IFileUploadService, ServerFileUploadService>();
 
 // Add API services
 builder.Services.AddControllers();

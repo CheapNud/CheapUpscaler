@@ -1,5 +1,6 @@
 @inject IFileDialogService FileDialog
 @inject IFileBrowserService? FileBrowser
+@inject IFileUploadService? FileUpload
 @inject IDialogService DialogService
 @inject ISnackbar Snackbar
 @inject IVideoInfoService VideoInfoService
@@ -42,6 +43,15 @@
                                    OnClick="@BrowseServerSourceFile">
                             Browse
                         </MudButton>
+                        @if (FileUpload?.SupportsUpload == true)
+                        {
+                            <MudButton Variant="Variant.Outlined"
+                                       Color="Color.Secondary"
+                                       StartIcon="@Icons.Material.Filled.CloudUpload"
+                                       OnClick="@OpenUploadDialog">
+                                Upload
+                            </MudButton>
+                        }
                         <MudButton Variant="Variant.Outlined"
                                    Color="Color.Primary"
                                    StartIcon="@Icons.Material.Filled.Refresh"
@@ -313,6 +323,30 @@
         if (result is { Canceled: false, Data: string path })
         {
             _sourcePath = path;
+            await LoadVideoInfo();
+        }
+    }
+
+    private async Task OpenUploadDialog()
+    {
+        var parameters = new DialogParameters<FileUploadDialog>
+        {
+            { x => x.FileExtensions, new[] { "mp4", "mkv", "avi", "mov", "webm", "wmv", "flv" } }
+        };
+
+        var dialogOptions = new DialogOptions
+        {
+            MaxWidth = MaxWidth.Medium,
+            FullWidth = true,
+            CloseOnEscapeKey = true
+        };
+
+        var dialog = await DialogService.ShowAsync<FileUploadDialog>("Upload Video File", parameters, dialogOptions);
+        var uploadResult = await dialog.Result;
+
+        if (uploadResult is { Canceled: false, Data: string uploadedPath })
+        {
+            _sourcePath = uploadedPath;
             await LoadVideoInfo();
         }
     }

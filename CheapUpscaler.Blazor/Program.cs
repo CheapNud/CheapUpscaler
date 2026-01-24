@@ -51,6 +51,7 @@ class Program
         builder.Services.AddScoped<IFileDialogService, DesktopFileDialogService>();
         builder.Services.AddScoped<ISystemService, DesktopSystemService>();
         builder.Services.AddSingleton<IHardwareService, DesktopHardwareService>();
+        builder.Services.AddScoped<IFileUploadService, DesktopUploadService>();
 
         // Configure database (SQLite in AppData)
         var appDataPath = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
