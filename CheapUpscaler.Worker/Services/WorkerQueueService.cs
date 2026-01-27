@@ -19,9 +19,10 @@ public class WorkerQueueService : BackgroundService, IUpscaleQueueService
     private readonly IWorkerProcessorService _processor;
     private readonly ILogger<WorkerQueueService> _logger;
     private readonly ConcurrentDictionary<Guid, UpscaleJob> _jobs = new();
+    private readonly ConcurrentDictionary<Guid, CancellationTokenSource> _jobCancellations = new();
     private readonly SemaphoreSlim _processingSemaphore;
     private readonly int _maxConcurrentJobs;
-    private volatile bool _isQueuePaused;
+    private volatile bool _isQueuePaused = true; // Default to paused
     private bool _isInitialized;
 
     public event EventHandler<UpscaleProgressEventArgs>? ProgressChanged;
@@ -104,6 +105,24 @@ public class WorkerQueueService : BackgroundService, IUpscaleQueueService
         if (_jobs.TryGetValue(jobId, out var job) &&
             job.Status is UpscaleJobStatus.Pending or UpscaleJobStatus.Running or UpscaleJobStatus.Paused)
         {
+            // Cancel the processing token if job is running
+            if (_jobCancellations.TryRemove(jobId, out var cts))
+            {
+                try
+                {
+                    await cts.CancelAsync();
+                    _logger.LogDebug("Cancellation token triggered for job {JobId}", jobId);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Error cancelling job {JobId} token", jobId);
+                }
+                finally
+                {
+                    cts.Dispose();
+                }
+            }
+
             job.Status = UpscaleJobStatus.Cancelled;
             job.LastUpdatedAt = DateTime.UtcNow;
             job.CompletedAt = DateTime.UtcNow;
@@ -364,6 +383,11 @@ public class WorkerQueueService : BackgroundService, IUpscaleQueueService
 
         await _processingSemaphore.WaitAsync(cancellationToken);
 
+        // Create a job-specific CancellationTokenSource linked to the service's stopping token
+        using var jobCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        _jobCancellations[jobId] = jobCts;
+        var jobToken = jobCts.Token;
+
         try
         {
             job.Status = UpscaleJobStatus.Running;
@@ -379,6 +403,13 @@ public class WorkerQueueService : BackgroundService, IUpscaleQueueService
             {
                 job.ProgressPercentage = percentage;
                 job.LastUpdatedAt = DateTime.UtcNow;
+
+                // Calculate current frame from percentage if TotalFrames is known
+                if (job.TotalFrames.HasValue && job.TotalFrames > 0)
+                {
+                    job.CurrentFrame = (int)(percentage / 100.0 * job.TotalFrames.Value);
+                }
+
                 OnProgressChanged(job);
 
                 if (percentage % 10 < 1) // Log every ~10%
@@ -387,7 +418,7 @@ public class WorkerQueueService : BackgroundService, IUpscaleQueueService
                 }
             });
 
-            var success = await _processor.ProcessJobAsync(job, progress, cancellationToken);
+            var success = await _processor.ProcessJobAsync(job, progress, jobToken);
 
             if (success && job.Status == UpscaleJobStatus.Running)
             {
@@ -428,9 +459,31 @@ public class WorkerQueueService : BackgroundService, IUpscaleQueueService
         }
         finally
         {
+            // Clean up the job cancellation token
+            _jobCancellations.TryRemove(jobId, out _);
+
             job.ProcessId = null;
             job.LastUpdatedAt = DateTime.UtcNow;
             _processingSemaphore.Release();
+
+            // Auto-pause queue if no pending jobs remain
+            await CheckAndAutoPauseQueueAsync();
+        }
+    }
+
+    /// <summary>
+    /// Automatically pause the queue if no pending or running jobs remain
+    /// </summary>
+    private async Task CheckAndAutoPauseQueueAsync()
+    {
+        var hasPendingJobs = _jobs.Values.Any(j =>
+            j.Status is UpscaleJobStatus.Pending or UpscaleJobStatus.Running or UpscaleJobStatus.Paused);
+
+        if (!hasPendingJobs && !_isQueuePaused)
+        {
+            _isQueuePaused = true;
+            QueueStatusChanged?.Invoke(this, true);
+            _logger.LogInformation("Queue auto-paused - no pending jobs remaining");
         }
     }
 

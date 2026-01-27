@@ -157,7 +157,7 @@ public class RealEsrganService
             var vspipeProcess = new ProcessStartInfo
             {
                 FileName = vspipePath,
-                Arguments = $"\"{tempScriptPath}\" - -c y4m",
+                Arguments = $"-p \"{tempScriptPath}\" - -c y4m",
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 UseShellExecute = false,
@@ -217,22 +217,44 @@ public class RealEsrganService
                 }, cancellationToken);
 
                 // Monitor progress from vspipe stderr
+                // vspipe uses \r for progress updates (not \n), so we read character by character
                 var progressTask = Task.Run(async () =>
                 {
-                    string? line;
                     var framePattern = new Regex(@"Frame:\s*(\d+)/(\d+)");
+                    var buffer = new char[256];
+                    var lineBuilder = new System.Text.StringBuilder();
+                    var reader = vspipe.StandardError;
 
-                    while ((line = await vspipe.StandardError.ReadLineAsync(cancellationToken)) != null)
+                    while (!cancellationToken.IsCancellationRequested)
                     {
-                        _logger?.LogDebug("[vspipe] {Line}", line);
+                        var bytesRead = await reader.ReadAsync(buffer, 0, buffer.Length);
+                        if (bytesRead == 0) break;
 
-                        var match = framePattern.Match(line);
-                        if (match.Success &&
-                            int.TryParse(match.Groups[1].Value, out var current) &&
-                            int.TryParse(match.Groups[2].Value, out var total) &&
-                            total > 0)
+                        for (int i = 0; i < bytesRead; i++)
                         {
-                            progress?.Report((double)current / total * 100);
+                            var c = buffer[i];
+                            if (c == '\r' || c == '\n')
+                            {
+                                if (lineBuilder.Length > 0)
+                                {
+                                    var line = lineBuilder.ToString();
+                                    _logger?.LogDebug("[vspipe] {Line}", line);
+
+                                    var match = framePattern.Match(line);
+                                    if (match.Success &&
+                                        int.TryParse(match.Groups[1].Value, out var current) &&
+                                        int.TryParse(match.Groups[2].Value, out var total) &&
+                                        total > 0)
+                                    {
+                                        progress?.Report((double)current / total * 100);
+                                    }
+                                    lineBuilder.Clear();
+                                }
+                            }
+                            else
+                            {
+                                lineBuilder.Append(c);
+                            }
                         }
                     }
                 }, cancellationToken);
@@ -312,6 +334,9 @@ public class RealEsrganService
         // FP16 mode is now done via clip format (RGBH = FP16, RGBS = FP32)
         var clipFormat = options.UseFp16 ? "vs.RGBH" : "vs.RGBS";
 
+        // TensorRT backend: True = use TensorRT (faster, requires installation), False = use Torch (PyTorch CUDA)
+        var useTrt = options.UseTensorRT ? "True" : "False";
+
         return $@"
 import vapoursynth as vs
 import sys
@@ -326,11 +351,17 @@ except ImportError as e:
     raise Exception('vsrealesrgan not installed. Run: pip install vsrealesrgan')
 
 # Load video - try multiple source filters
+# Use temp directory for index files to avoid permission issues in Docker
+import tempfile
+import hashlib
+video_hash = hashlib.md5(r'{inputVideoPath}'.encode()).hexdigest()[:8]
+index_path = os.path.join(tempfile.gettempdir(), f'ffms2_{{video_hash}}.ffindex')
+
 try:
     clip = core.bs.VideoSource(source=r'{inputVideoPath}')
 except:
     try:
-        clip = core.ffms2.Source(r'{inputVideoPath}')
+        clip = core.ffms2.Source(r'{inputVideoPath}', cachefile=index_path)
     except:
         try:
             clip = core.lsmas.LWLibavSource(r'{inputVideoPath}')
@@ -354,13 +385,15 @@ try:
     clip = core.resize.Bicubic(clip, format={clipFormat}, matrix_in_s='709')
 
     # Apply Real-ESRGAN
+    # TensorRT: None = auto-detect, True = force TRT, False = force Torch
+    trt_setting = {useTrt}
     clip = realesrgan(
         clip,
         device_index={options.GpuId},
         model=RealESRGANModel.{modelEnumName},
         tile={tileParam},
         tile_pad={options.TilePad},
-        trt=False,
+        trt=trt_setting,
         auto_download=True
     )
 

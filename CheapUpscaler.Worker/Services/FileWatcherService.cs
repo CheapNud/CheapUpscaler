@@ -151,6 +151,15 @@ public class FileWatcherService : BackgroundService
             return;
         }
 
+        // Check if a job already exists for this input file
+        var existingJobs = await _queueService.GetAllJobsAsync();
+        if (existingJobs.Any(j => j.SourceVideoPath == inputFile &&
+            j.Status is UpscaleJobStatus.Pending or UpscaleJobStatus.Running or UpscaleJobStatus.Paused))
+        {
+            _logger.LogInformation("Job already exists for {FileName}, skipping auto-queue", fileName);
+            return;
+        }
+
         // Get default settings from configuration
         var defaultType = _configuration["Worker:DefaultUpscaleType"] ?? "RealEsrgan";
         var upscaleType = Enum.TryParse<UpscaleType>(defaultType, true, out var type)

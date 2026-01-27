@@ -161,6 +161,51 @@ public class JobsController(WorkerQueueService queueService, ILogger<JobsControl
     }
 
     /// <summary>
+    /// Download the output file for a completed job
+    /// </summary>
+    [HttpGet("{id:guid}/download")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> DownloadOutput(Guid id)
+    {
+        var job = await queueService.GetJobAsync(id);
+        if (job == null)
+        {
+            return NotFound(new { Error = $"Job {id} not found" });
+        }
+
+        if (job.Status != UpscaleJobStatus.Completed)
+        {
+            return BadRequest(new { Error = $"Job is not completed (status: {job.Status})" });
+        }
+
+        if (string.IsNullOrEmpty(job.OutputPath) || !System.IO.File.Exists(job.OutputPath))
+        {
+            return NotFound(new { Error = "Output file not found" });
+        }
+
+        var fileName = Path.GetFileName(job.OutputPath);
+        var contentType = "video/mp4";
+
+        // Determine content type based on extension
+        var ext = Path.GetExtension(job.OutputPath).ToLowerInvariant();
+        contentType = ext switch
+        {
+            ".mkv" => "video/x-matroska",
+            ".avi" => "video/x-msvideo",
+            ".webm" => "video/webm",
+            ".mov" => "video/quicktime",
+            _ => "video/mp4"
+        };
+
+        logger.LogInformation("Downloading output for job {JobId}: {FileName}", id, fileName);
+
+        var stream = new FileStream(job.OutputPath, FileMode.Open, FileAccess.Read, FileShare.Read);
+        return File(stream, contentType, fileName);
+    }
+
+    /// <summary>
     /// Get queue statistics
     /// </summary>
     [HttpGet("stats")]

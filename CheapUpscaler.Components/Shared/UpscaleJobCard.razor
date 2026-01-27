@@ -1,4 +1,5 @@
 @inject ISystemService SystemService
+@inject NavigationManager NavigationManager
 
 <MudCard Elevation="2" Class="mb-2">
     <MudCardContent Class="pa-3">
@@ -77,6 +78,12 @@
                     }
                     else if (Job.Status == UpscaleJobStatus.Completed)
                     {
+                        <MudTooltip Text="Download Output">
+                            <MudIconButton Icon="@Icons.Material.Filled.Download"
+                                           Color="Color.Success"
+                                           Size="Size.Small"
+                                           OnClick="@DownloadOutput" />
+                        </MudTooltip>
                         @if (SystemService.SupportsExplorerIntegration)
                         {
                             <MudTooltip Text="Open Output Folder">
@@ -101,14 +108,28 @@
             {
                 <MudItem xs="12">
                     <MudStack Spacing="1">
-                        <MudProgressLinear Value="@Job.ProgressPercentage"
-                                           Color="@(Job.Status == UpscaleJobStatus.Paused ? Color.Warning : Color.Primary)"
-                                           Striped="@(Job.Status == UpscaleJobStatus.Paused)"
-                                           Size="Size.Medium"
-                                           Rounded="true" />
+                        @if (IsWarmingUp)
+                        {
+                            <MudProgressLinear Indeterminate="true"
+                                               Color="Color.Info"
+                                               Size="Size.Medium"
+                                               Rounded="true" />
+                        }
+                        else
+                        {
+                            <MudProgressLinear Value="@Job.ProgressPercentage"
+                                               Color="@(Job.Status == UpscaleJobStatus.Paused ? Color.Warning : Color.Primary)"
+                                               Striped="@(Job.Status == UpscaleJobStatus.Paused)"
+                                               Size="Size.Medium"
+                                               Rounded="true" />
+                        }
                         <MudStack Row="true" Justify="Justify.SpaceBetween">
                             <MudText Typo="Typo.caption" Color="Color.Secondary">
-                                @if (Job.TotalFrames.HasValue && Job.TotalFrames > 0)
+                                @if (IsWarmingUp)
+                                {
+                                    @("Warming up (loading model)...")
+                                }
+                                else if (Job.TotalFrames.HasValue && Job.TotalFrames > 0)
                                 {
                                     @($"Frame {Job.CurrentFrame:N0} / {Job.TotalFrames:N0}")
                                 }
@@ -118,7 +139,7 @@
                                 }
                             </MudText>
                             <MudText Typo="Typo.caption" Color="Color.Secondary">
-                                @if (Job.EstimatedTimeRemaining.HasValue)
+                                @if (!IsWarmingUp && Job.EstimatedTimeRemaining.HasValue)
                                 {
                                     @FormatTimeRemaining(Job.EstimatedTimeRemaining.Value)
                                 }
@@ -174,6 +195,13 @@
 
     [Parameter]
     public EventCallback<Guid> OnDelete { get; set; }
+
+    /// <summary>
+    /// True when job is running but no progress yet (model loading / warmup phase)
+    /// </summary>
+    private bool IsWarmingUp => Job.Status == UpscaleJobStatus.Running &&
+                                Job.ProgressPercentage < 0.1 &&
+                                Job.CurrentFrame == 0;
 
     private string GetStatusIcon() => Job.Status switch
     {
@@ -257,5 +285,12 @@
                 await SystemService.OpenFolderInExplorerAsync(directory);
             }
         }
+    }
+
+    private void DownloadOutput()
+    {
+        // Navigate to the download API endpoint - browser will handle the file download
+        var downloadUrl = $"{NavigationManager.BaseUri}api/jobs/{Job.JobId}/download";
+        NavigationManager.NavigateTo(downloadUrl, forceLoad: true);
     }
 }

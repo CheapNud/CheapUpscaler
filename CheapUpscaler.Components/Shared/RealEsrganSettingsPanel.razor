@@ -43,6 +43,15 @@
     <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-n2">
         FP16 uses less VRAM and is faster on modern GPUs
     </MudText>
+
+    <MudSwitch T="bool"
+               Value="Settings.UseTensorRT"
+               ValueChanged="@(v => UpdateSettings(s => s.UseTensorRT = v))"
+               Label="Use TensorRT Backend"
+               Color="Color.Primary" />
+    <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-n2">
+        TensorRT is 2-3x faster but requires separate installation (Windows with vs-mlrt)
+    </MudText>
 </MudStack>
 
 @code {
