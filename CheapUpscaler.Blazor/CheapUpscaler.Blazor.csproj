@@ -5,7 +5,6 @@
     <TargetFramework>net10.0-windows</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <AddRazorSupportForMvc>true</AddRazorSupportForMvc>
     <OutputType>WinExe</OutputType>
     <BlazorDisableThrowNavigationException>true</BlazorDisableThrowNavigationException>
 
@@ -14,8 +13,12 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- Desktop framework with Avalonia + Photino + Blazor -->
-    <PackageReference Include="CheapAvaloniaBlazor" Version="1.2.0" />
+    <PackageReference Include="CheapAvaloniaBlazor" Version="2.0.0" />
     <!-- UI component library -->
     <PackageReference Include="MudBlazor" Version="8.15.0" />
     <!-- Database for job persistence -->
