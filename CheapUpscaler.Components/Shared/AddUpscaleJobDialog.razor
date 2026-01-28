@@ -1,0 +1,469 @@
+@inject IFileDialogService FileDialog
+@inject IFileBrowserService? FileBrowser
+@inject IFileUploadService? FileUpload
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+@inject IVideoInfoService VideoInfoService
+
+<MudDialog>
+    <TitleContent>
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+            <MudIcon Icon="@Icons.Material.Filled.VideoSettings" />
+            <MudText Typo="Typo.h6">Add Upscale Job</MudText>
+        </MudStack>
+    </TitleContent>
+    <DialogContent>
+        <MudStack Spacing="4" Class="mt-2">
+            <!-- Source Video Selection -->
+            <MudStack Spacing="1">
+                <MudText Typo="Typo.subtitle2">Source Video</MudText>
+                <MudStack Row="true" Spacing="2">
+                    <MudTextField @bind-Value="_sourcePath"
+                                  Placeholder="@(FileDialog.SupportsNativeDialogs ? "Select a video file..." : "Enter video file path or browse...")"
+                                  ReadOnly="@FileDialog.SupportsNativeDialogs"
+                                  Variant="Variant.Outlined"
+                                  Adornment="Adornment.Start"
+                                  AdornmentIcon="@Icons.Material.Filled.VideoFile"
+                                  Style="flex-grow: 1;"
+                                  OnBlur="@OnSourcePathChanged" />
+                    @if (FileDialog.SupportsNativeDialogs)
+                    {
+                        <MudButton Variant="Variant.Filled"
+                                   Color="Color.Primary"
+                                   StartIcon="@Icons.Material.Filled.FolderOpen"
+                                   OnClick="@BrowseSourceFile">
+                            Browse
+                        </MudButton>
+                    }
+                    else if (FileBrowser != null)
+                    {
+                        <MudButton Variant="Variant.Filled"
+                                   Color="Color.Primary"
+                                   StartIcon="@Icons.Material.Filled.FolderOpen"
+                                   OnClick="@BrowseServerSourceFile">
+                            Browse
+                        </MudButton>
+                        @if (FileUpload?.SupportsUpload == true)
+                        {
+                            <MudButton Variant="Variant.Outlined"
+                                       Color="Color.Secondary"
+                                       StartIcon="@Icons.Material.Filled.CloudUpload"
+                                       OnClick="@OpenUploadDialog">
+                                Upload
+                            </MudButton>
+                        }
+                        <MudButton Variant="Variant.Outlined"
+                                   Color="Color.Primary"
+                                   StartIcon="@Icons.Material.Filled.Refresh"
+                                   OnClick="@LoadVideoInfo"
+                                   Disabled="@(string.IsNullOrWhiteSpace(_sourcePath))">
+                            Load
+                        </MudButton>
+                    }
+                    else
+                    {
+                        <MudButton Variant="Variant.Filled"
+                                   Color="Color.Primary"
+                                   StartIcon="@Icons.Material.Filled.Refresh"
+                                   OnClick="@LoadVideoInfo"
+                                   Disabled="@(string.IsNullOrWhiteSpace(_sourcePath))">
+                            Load
+                        </MudButton>
+                    }
+                </MudStack>
+                @if (_isLoadingVideoInfo)
+                {
+                    <MudProgressLinear Indeterminate="true" Color="Color.Primary" Class="mt-2" />
+                }
+                else if (_videoInfo != null)
+                {
+                    <MudPaper Elevation="0" Class="pa-3 mt-2" Style="background-color: var(--mud-palette-background-gray);">
+                        <MudStack Spacing="2">
+                            <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                                <MudText Typo="Typo.subtitle2" Color="Color.Primary">
+                                    @_videoInfo.FileName
+                                </MudText>
+                                <MudChip T="string" Size="Size.Small" Color="Color.Info">@_videoInfo.ResolutionLabel</MudChip>
+                            </MudStack>
+                            <MudStack Row="true" Spacing="4" Wrap="Wrap.Wrap">
+                                <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center">
+                                    <MudIcon Icon="@Icons.Material.Filled.AspectRatio" Size="Size.Small" Color="Color.Secondary" />
+                                    <MudText Typo="Typo.body2">@_videoInfo.Resolution</MudText>
+                                </MudStack>
+                                <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center">
+                                    <MudIcon Icon="@Icons.Material.Filled.Timer" Size="Size.Small" Color="Color.Secondary" />
+                                    <MudText Typo="Typo.body2">@_videoInfo.DurationFormatted</MudText>
+                                </MudStack>
+                                <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center">
+                                    <MudIcon Icon="@Icons.Material.Filled.Speed" Size="Size.Small" Color="Color.Secondary" />
+                                    <MudText Typo="Typo.body2">@_videoInfo.FrameRateFormatted</MudText>
+                                </MudStack>
+                                <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center">
+                                    <MudIcon Icon="@Icons.Material.Filled.Storage" Size="Size.Small" Color="Color.Secondary" />
+                                    <MudText Typo="Typo.body2">@_videoInfo.FileSizeFormatted</MudText>
+                                </MudStack>
+                            </MudStack>
+                            <MudStack Row="true" Spacing="2">
+                                <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined">@_videoInfo.VideoCodec.ToUpperInvariant()</MudChip>
+                                @if (_videoInfo.HasAudio)
+                                {
+                                    <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined">@_videoInfo.AudioCodec!.ToUpperInvariant()</MudChip>
+                                }
+                                <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined">@_videoInfo.TotalFrames.ToString("N0") frames</MudChip>
+                            </MudStack>
+                        </MudStack>
+                    </MudPaper>
+                }
+                else if (!string.IsNullOrEmpty(_sourcePath))
+                {
+                    <MudAlert Severity="Severity.Warning" Dense="true" Class="mt-2">
+                        Could not read video information. The file may be corrupted or in an unsupported format.
+                    </MudAlert>
+                }
+            </MudStack>
+
+            <!-- Upscale Type Selection -->
+            <MudStack Spacing="1">
+                <MudText Typo="Typo.subtitle2">Upscale Method</MudText>
+                <MudSelect T="UpscaleType"
+                           @bind-Value="_selectedType"
+                           Variant="Variant.Outlined"
+                           AnchorOrigin="Origin.BottomCenter">
+                    <MudSelectItem Value="UpscaleType.Rife">
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                            <MudIcon Icon="@Icons.Material.Filled.Speed" Size="Size.Small" />
+                            <span>RIFE - Frame Interpolation</span>
+                        </MudStack>
+                    </MudSelectItem>
+                    <MudSelectItem Value="UpscaleType.RealCugan">
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                            <MudIcon Icon="@Icons.Material.Filled.Animation" Size="Size.Small" />
+                            <span>Real-CUGAN - Anime/Cartoon Upscaling</span>
+                        </MudStack>
+                    </MudSelectItem>
+                    <MudSelectItem Value="UpscaleType.RealEsrgan">
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                            <MudIcon Icon="@Icons.Material.Filled.Photo" Size="Size.Small" />
+                            <span>Real-ESRGAN - General Upscaling</span>
+                        </MudStack>
+                    </MudSelectItem>
+                    <MudSelectItem Value="UpscaleType.NonAi">
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                            <MudIcon Icon="@Icons.Material.Filled.Tune" Size="Size.Small" />
+                            <span>Non-AI - Traditional Upscaling</span>
+                        </MudStack>
+                    </MudSelectItem>
+                </MudSelect>
+            </MudStack>
+
+            <!-- Type-Specific Settings -->
+            <MudPaper Elevation="0" Class="pa-3" Style="background-color: var(--mud-palette-background-gray);">
+                @switch (_selectedType)
+                {
+                    case UpscaleType.Rife:
+                        <RifeSettingsPanel @bind-Settings="_rifeSettings" />
+                        break;
+                    case UpscaleType.RealCugan:
+                        <RealCuganSettingsPanel @bind-Settings="_realCuganSettings" />
+                        break;
+                    case UpscaleType.RealEsrgan:
+                        <RealEsrganSettingsPanel @bind-Settings="_realEsrganSettings" />
+                        break;
+                    case UpscaleType.NonAi:
+                        <NonAiSettingsPanel @bind-Settings="_nonAiSettings" />
+                        break;
+                }
+            </MudPaper>
+
+            <!-- Output Path -->
+            <MudStack Spacing="1">
+                <MudText Typo="Typo.subtitle2">Output</MudText>
+                <MudStack Row="true" Spacing="2">
+                    <MudTextField @bind-Value="_outputPath"
+                                  Placeholder="Output file path..."
+                                  Variant="Variant.Outlined"
+                                  Adornment="Adornment.Start"
+                                  AdornmentIcon="@Icons.Material.Filled.Save"
+                                  Style="flex-grow: 1;" />
+                    @if (FileDialog.SupportsNativeDialogs)
+                    {
+                        <MudButton Variant="Variant.Outlined"
+                                   Color="Color.Default"
+                                   StartIcon="@Icons.Material.Filled.FolderOpen"
+                                   OnClick="@BrowseOutputPath">
+                            Browse
+                        </MudButton>
+                    }
+                    else if (FileBrowser != null)
+                    {
+                        <MudButton Variant="Variant.Outlined"
+                                   Color="Color.Default"
+                                   StartIcon="@Icons.Material.Filled.FolderOpen"
+                                   OnClick="@BrowseServerOutputPath">
+                            Browse
+                        </MudButton>
+                    }
+                </MudStack>
+            </MudStack>
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel" Color="Color.Default">Cancel</MudButton>
+        <MudButton OnClick="Submit"
+                   Color="Color.Primary"
+                   Variant="Variant.Filled"
+                   Disabled="@(!IsValid)"
+                   StartIcon="@Icons.Material.Filled.Add">
+            Add to Queue
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; } = null!;
+
+    private string _sourcePath = string.Empty;
+    private string _outputPath = string.Empty;
+    private UpscaleType _selectedType = UpscaleType.Rife;
+    private VideoInfo? _videoInfo;
+    private bool _isLoadingVideoInfo;
+
+    // Settings for each type
+    private RifeJobSettings _rifeSettings = new();
+    private RealCuganJobSettings _realCuganSettings = new();
+    private RealEsrganJobSettings _realEsrganSettings = new();
+    private NonAiJobSettings _nonAiSettings = new();
+
+    private bool IsValid => !string.IsNullOrWhiteSpace(_sourcePath) &&
+                            !string.IsNullOrWhiteSpace(_outputPath) &&
+                            File.Exists(_sourcePath) &&
+                            _videoInfo != null;
+
+    private async Task OnSourcePathChanged()
+    {
+        if (!FileDialog.SupportsNativeDialogs && !string.IsNullOrWhiteSpace(_sourcePath))
+        {
+            await LoadVideoInfo();
+        }
+    }
+
+    private async Task LoadVideoInfo()
+    {
+        if (string.IsNullOrWhiteSpace(_sourcePath) || !File.Exists(_sourcePath))
+            return;
+
+        _videoInfo = null;
+        _isLoadingVideoInfo = true;
+        StateHasChanged();
+
+        try
+        {
+            _videoInfo = await VideoInfoService.GetVideoInfoAsync(_sourcePath);
+        }
+        finally
+        {
+            _isLoadingVideoInfo = false;
+        }
+
+        GenerateOutputPath();
+        StateHasChanged();
+    }
+
+    private async Task BrowseSourceFile()
+    {
+        var options = new FileDialogOptions
+        {
+            Title = "Select Video File",
+            Extensions = ["mp4", "mkv", "avi", "mov", "webm", "wmv", "flv"]
+        };
+
+        var result = await FileDialog.OpenFileAsync(options);
+        if (!string.IsNullOrEmpty(result))
+        {
+            _sourcePath = result;
+            await LoadVideoInfo();
+        }
+    }
+
+    private async Task BrowseOutputPath()
+    {
+        var options = new FileDialogOptions
+        {
+            Title = "Save Output As",
+            DefaultFileName = Path.GetFileName(_outputPath),
+            Extensions = ["mp4", "mkv"]
+        };
+
+        var result = await FileDialog.SaveFileAsync(options);
+        if (!string.IsNullOrEmpty(result))
+        {
+            _outputPath = result;
+        }
+    }
+
+    private async Task BrowseServerSourceFile()
+    {
+        var parameters = new DialogParameters<FileBrowserDialog>
+        {
+            { x => x.Mode, FileBrowserDialog.FileBrowserMode.OpenFile },
+            { x => x.FileExtensions, new[] { "mp4", "mkv", "avi", "mov", "webm", "wmv", "flv" } }
+        };
+
+        var options = new DialogOptions
+        {
+            MaxWidth = MaxWidth.Medium,
+            FullWidth = true,
+            CloseOnEscapeKey = true
+        };
+
+        var dialog = await DialogService.ShowAsync<FileBrowserDialog>("Select Video File", parameters, options);
+        var result = await dialog.Result;
+
+        if (result is { Canceled: false, Data: string path })
+        {
+            _sourcePath = path;
+            await LoadVideoInfo();
+        }
+    }
+
+    private async Task OpenUploadDialog()
+    {
+        var parameters = new DialogParameters<FileUploadDialog>
+        {
+            { x => x.FileExtensions, new[] { "mp4", "mkv", "avi", "mov", "webm", "wmv", "flv" } }
+        };
+
+        var dialogOptions = new DialogOptions
+        {
+            MaxWidth = MaxWidth.Medium,
+            FullWidth = true,
+            CloseOnEscapeKey = true
+        };
+
+        var dialog = await DialogService.ShowAsync<FileUploadDialog>("Upload Video File", parameters, dialogOptions);
+        var uploadResult = await dialog.Result;
+
+        if (uploadResult is { Canceled: false, Data: string uploadedPath })
+        {
+            _sourcePath = uploadedPath;
+            await LoadVideoInfo();
+        }
+    }
+
+    private async Task BrowseServerOutputPath()
+    {
+        var parameters = new DialogParameters<FileBrowserDialog>
+        {
+            { x => x.Mode, FileBrowserDialog.FileBrowserMode.SaveFile },
+            { x => x.FileExtensions, new[] { "mp4", "mkv" } },
+            { x => x.DefaultFileName, Path.GetFileName(_outputPath) }
+        };
+
+        var options = new DialogOptions
+        {
+            MaxWidth = MaxWidth.Medium,
+            FullWidth = true,
+            CloseOnEscapeKey = true
+        };
+
+        var dialog = await DialogService.ShowAsync<FileBrowserDialog>("Save Output File", parameters, options);
+        var result = await dialog.Result;
+
+        if (result is { Canceled: false, Data: string path })
+        {
+            _outputPath = path;
+        }
+    }
+
+    private void GenerateOutputPath()
+    {
+        if (string.IsNullOrEmpty(_sourcePath)) return;
+
+        var directory = Path.GetDirectoryName(_sourcePath) ?? "";
+        var fileName = Path.GetFileNameWithoutExtension(_sourcePath);
+        var extension = Path.GetExtension(_sourcePath);
+
+        var suffix = _selectedType switch
+        {
+            UpscaleType.Rife => $"_rife{_rifeSettings.Multiplier}x",
+            UpscaleType.RealCugan => $"_cugan{_realCuganSettings.Scale}x",
+            UpscaleType.RealEsrgan => $"_esrgan{_realEsrganSettings.Scale}x",
+            UpscaleType.NonAi => $"_{_nonAiSettings.Algorithm.ToLower()}{_nonAiSettings.Scale}x",
+            _ => "_upscaled"
+        };
+
+        _outputPath = Path.Combine(directory, $"{fileName}{suffix}{extension}");
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+
+    private void Submit()
+    {
+        if (!IsValid)
+        {
+            Snackbar.Add("Please select a valid source video", Severity.Warning);
+            return;
+        }
+
+        var job = new UpscaleJob
+        {
+            SourceVideoPath = _sourcePath,
+            OutputPath = _outputPath,
+            UpscaleType = _selectedType,
+            SettingsJson = GetSettingsJson(),
+            // Populate source video info
+            SourceWidth = _videoInfo?.Width,
+            SourceHeight = _videoInfo?.Height,
+            SourceFps = _videoInfo?.FrameRate,
+            SourceDuration = _videoInfo?.Duration,
+            TotalFrames = _videoInfo?.TotalFrames
+        };
+
+        MudDialog.Close(DialogResult.Ok(job));
+    }
+
+    private string GetSettingsJson()
+    {
+        object settings = _selectedType switch
+        {
+            UpscaleType.Rife => _rifeSettings,
+            UpscaleType.RealCugan => _realCuganSettings,
+            UpscaleType.RealEsrgan => _realEsrganSettings,
+            UpscaleType.NonAi => _nonAiSettings,
+            _ => new { }
+        };
+
+        return System.Text.Json.JsonSerializer.Serialize(settings);
+    }
+
+    // Settings models for each type
+    public class RifeJobSettings
+    {
+        public int Multiplier { get; set; } = 2;
+        public int TargetFps { get; set; } = 60;
+        public string QualityPreset { get; set; } = "Medium";
+    }
+
+    public class RealCuganJobSettings
+    {
+        public int NoiseLevel { get; set; } = -1;
+        public int Scale { get; set; } = 2;
+        public bool UseFp16 { get; set; } = true;
+    }
+
+    public class RealEsrganJobSettings
+    {
+        public string Model { get; set; } = "RealESRGAN_x4plus";
+        public int Scale { get; set; } = 4;
+        public int TileSize { get; set; } = 512;
+        public bool UseFp16 { get; set; } = true;
+        public bool UseTensorRT { get; set; } = false;
+    }
+
+    public class NonAiJobSettings
+    {
+        public string Algorithm { get; set; } = "Lanczos";
+        public int Scale { get; set; } = 2;
+    }
+}

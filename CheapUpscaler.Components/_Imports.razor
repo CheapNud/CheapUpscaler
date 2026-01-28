@@ -1,0 +1,31 @@
+@using System.Net.Http
+@using Microsoft.AspNetCore.Components.Forms
+@using Microsoft.AspNetCore.Components.Routing
+@using Microsoft.AspNetCore.Components.Web
+@using Microsoft.JSInterop
+@using MudBlazor
+
+@* Shared models from CheapUpscaler.Shared *@
+@using CheapUpscaler.Shared.Models
+@using CheapUpscaler.Shared.Data
+@using CheapUpscaler.Shared.Services
+
+@* Core services *@
+@using CheapUpscaler.Core
+@using CheapUpscaler.Core.Services.VapourSynth
+@using CheapUpscaler.Core.Services.RIFE
+@using CheapUpscaler.Core.Services.RealCUGAN
+@using CheapUpscaler.Core.Services.RealESRGAN
+@using CheapUpscaler.Core.Services.Upscaling
+
+@* Media processing *@
+@using CheapHelpers.MediaProcessing.Services
+@using CheapHelpers.MediaProcessing.Models
+
+@* Component library types *@
+@using CheapUpscaler.Components
+@using CheapUpscaler.Components.Models
+@using CheapUpscaler.Components.Services
+@using CheapUpscaler.Components.Pages
+@using CheapUpscaler.Components.Shared
+@using CheapUpscaler.Components.Layout

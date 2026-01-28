@@ -1,0 +1,69 @@
+@using static CheapUpscaler.Components.Shared.AddUpscaleJobDialog
+
+<MudStack Spacing="3">
+    <MudText Typo="Typo.subtitle2" Color="Color.Primary">Real-ESRGAN Settings (General Content)</MudText>
+
+    <MudSelect T="string"
+               Value="Settings.Model"
+               ValueChanged="@(v => UpdateSettings(s => s.Model = v))"
+               Label="Model"
+               Variant="Variant.Outlined"
+               HelperText="AI model optimized for different content types">
+        <MudSelectItem Value="@("RealESRGAN_x4plus")">RealESRGAN x4plus (General)</MudSelectItem>
+        <MudSelectItem Value="@("RealESRGAN_x4plus_anime_6B")">RealESRGAN x4plus Anime 6B</MudSelectItem>
+        <MudSelectItem Value="@("RealESRGAN_x2plus")">RealESRGAN x2plus (2x only)</MudSelectItem>
+        <MudSelectItem Value="@("realesr-animevideov3")">RealESR AnimeVideo v3</MudSelectItem>
+    </MudSelect>
+
+    <MudSelect T="int"
+               Value="Settings.Scale"
+               ValueChanged="@(v => UpdateSettings(s => s.Scale = v))"
+               Label="Scale Factor"
+               Variant="Variant.Outlined"
+               HelperText="Output resolution multiplier">
+        <MudSelectItem Value="2">2x</MudSelectItem>
+        <MudSelectItem Value="4">4x</MudSelectItem>
+    </MudSelect>
+
+    <MudNumericField T="int"
+                     Value="Settings.TileSize"
+                     ValueChanged="@(v => UpdateSettings(s => s.TileSize = v))"
+                     Label="Tile Size"
+                     Variant="Variant.Outlined"
+                     Min="128"
+                     Max="1024"
+                     Step="64"
+                     HelperText="Smaller = less VRAM, larger = faster (if VRAM allows)" />
+
+    <MudSwitch T="bool"
+               Value="Settings.UseFp16"
+               ValueChanged="@(v => UpdateSettings(s => s.UseFp16 = v))"
+               Label="Use FP16 (Half Precision)"
+               Color="Color.Primary" />
+    <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-n2">
+        FP16 uses less VRAM and is faster on modern GPUs
+    </MudText>
+
+    <MudSwitch T="bool"
+               Value="Settings.UseTensorRT"
+               ValueChanged="@(v => UpdateSettings(s => s.UseTensorRT = v))"
+               Label="Use TensorRT Backend"
+               Color="Color.Primary" />
+    <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-n2">
+        TensorRT is 2-3x faster but requires separate installation (Windows with vs-mlrt)
+    </MudText>
+</MudStack>
+
+@code {
+    [Parameter]
+    public RealEsrganJobSettings Settings { get; set; } = new();
+
+    [Parameter]
+    public EventCallback<RealEsrganJobSettings> SettingsChanged { get; set; }
+
+    private async Task UpdateSettings(Action<RealEsrganJobSettings> update)
+    {
+        update(Settings);
+        await SettingsChanged.InvokeAsync(Settings);
+    }
+}

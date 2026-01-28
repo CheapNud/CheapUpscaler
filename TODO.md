@@ -209,6 +209,25 @@ Issues from PR #2 review and code audit. See: https://github.com/CheapNud/CheapU
 
 ---
 
+## Bug: CheapAvaloniaBlazor Static Web Assets (blazor.server.js 404) - FIXED
+
+**Problem**: The Blazor app boots but spams `InvalidOperationException` and `/_framework/blazor.server.js` returns 404.
+
+**Root Cause**: `EmbeddedBlazorHostService.cs` called `WebApplication.CreateBuilder()` without arguments, defaulting to "Production" environment where `UseStaticWebAssets()` is a no-op.
+
+**Fix Applied in CheapAvaloniaBlazor v1.2.4**:
+- [x] Hardcoded Development environment in `EmbeddedBlazorHostService.cs`
+- [x] Added fat comment explaining WHY it's hardcoded and the over-engineering history
+- [x] Removed `UseEnvironment()`, `UseDevelopmentEnvironment()`, `UseProductionEnvironment()` methods
+- [x] Removed `EnvironmentName` property from options
+- [x] Cleaned up README and docs
+
+**Why hardcode Development?** Desktop apps are localhost-only, never deployed to web servers. Production environment's security features (error hiding, HSTS) are irrelevant. Development mode is required for `UseStaticWebAssets()` to serve `blazor.server.js` from NuGet packages.
+
+**Over-engineering history (v1.2.2-v1.2.3)**: We tried letting users configure environment with `#if DEBUG` patterns, but NuGet libraries are compiled in Release mode so compile-time detection in the library doesn't work. After much complexity, realized the whole thing was solving a non-problem for desktop apps.
+
+---
+
 ## Future: Ubuntu Worker Service
 
 When ready to deploy to Tranquility (Ubuntu server):

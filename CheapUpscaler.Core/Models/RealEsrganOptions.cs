@@ -67,6 +67,14 @@ public class RealEsrganOptions
     /// </summary>
     public int NumThreads { get; set; } = 1;
 
+    /// <summary>
+    /// Use TensorRT backend for faster inference
+    /// true = Use TensorRT (requires TensorRT and vs-mlrt installation, ~2-3x faster)
+    /// false = Use Torch backend (PyTorch CUDA, works everywhere with CUDA)
+    /// Default is false for maximum compatibility
+    /// </summary>
+    public bool UseTensorRT { get; set; } = false;
+
     // === Quality Settings ===
 
     /// <summary>

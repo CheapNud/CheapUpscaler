@@ -1,9 +1,12 @@
 using CheapHelpers.MediaProcessing;
+using CheapUpscaler.Components.Services;
 using CheapUpscaler.Core;
 using CheapUpscaler.Shared.Data;
 using CheapUpscaler.Shared.Services;
+using CheapUpscaler.Worker.Components;
 using CheapUpscaler.Worker.Services;
 using Microsoft.EntityFrameworkCore;
+using MudBlazor.Services;
 using Serilog;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -18,7 +21,18 @@ Log.Logger = new LoggerConfiguration()
 
 builder.Host.UseSerilog();
 
-// Add services
+// Add Blazor Server services
+builder.Services.AddRazorComponents()
+    .AddInteractiveServerComponents();
+builder.Services.AddMudServices();
+
+// Register web implementations for platform abstractions
+builder.Services.AddScoped<IFileDialogService, WebFileDialogService>();
+builder.Services.AddScoped<ISystemService, WebSystemService>();
+builder.Services.AddScoped<IFileBrowserService, ServerFileBrowserService>();
+builder.Services.AddScoped<IFileUploadService, ServerFileUploadService>();
+
+// Add API services
 builder.Services.AddControllers();
 builder.Services.AddOpenApi();
 
@@ -48,7 +62,14 @@ builder.Services.AddSingleton<IBackgroundTaskQueue, BackgroundTaskQueue>();
 // Worker services
 builder.Services.AddSingleton<IWorkerProcessorService, WorkerProcessorService>();
 builder.Services.AddSingleton<WorkerQueueService>();
+builder.Services.AddSingleton<IUpscaleQueueService>(sp => sp.GetRequiredService<WorkerQueueService>());
 builder.Services.AddHostedService(sp => sp.GetRequiredService<WorkerQueueService>());
+
+// Component services (Settings, VideoInfo, DependencyChecker, Hardware)
+builder.Services.AddSingleton<ISettingsService, WorkerSettingsService>();
+builder.Services.AddSingleton<IVideoInfoService, WorkerVideoInfoService>();
+builder.Services.AddSingleton<IDependencyChecker, WorkerDependencyChecker>();
+builder.Services.AddSingleton<IHardwareService, WorkerHardwareService>();
 
 // File watcher (optional)
 var watchFolderEnabled = builder.Configuration.GetValue<bool>("Worker:WatchFolderEnabled", false);
@@ -84,11 +105,20 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+app.UseStaticFiles();
+app.UseAntiforgery();
 app.UseAuthorization();
+
+// Map API controllers
 app.MapControllers();
 
 // Health check endpoint
 app.MapGet("/health", () => Results.Ok(new { Status = "Healthy", Timestamp = DateTime.UtcNow }));
+
+// Map Blazor components (include Components library for routable pages)
+app.MapRazorComponents<App>()
+    .AddInteractiveServerRenderMode()
+    .AddAdditionalAssemblies(typeof(CheapUpscaler.Components.Pages.Home).Assembly);
 
 Log.Information("CheapUpscaler Worker starting...");
 Log.Information("Data path: {DataPath}", dataPath);

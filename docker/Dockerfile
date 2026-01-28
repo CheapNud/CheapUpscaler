@@ -11,6 +11,7 @@ WORKDIR /src
 # Copy project files for restore optimization
 COPY CheapUpscaler.Shared/*.csproj ./CheapUpscaler.Shared/
 COPY CheapUpscaler.Core/*.csproj ./CheapUpscaler.Core/
+COPY CheapUpscaler.Components/*.csproj ./CheapUpscaler.Components/
 COPY CheapUpscaler.Worker/*.csproj ./CheapUpscaler.Worker/
 
 # Restore dependencies (targets net10.0 for Linux)
@@ -19,6 +20,7 @@ RUN dotnet restore CheapUpscaler.Worker/CheapUpscaler.Worker.csproj -r linux-x64
 # Copy source files
 COPY CheapUpscaler.Shared/ ./CheapUpscaler.Shared/
 COPY CheapUpscaler.Core/ ./CheapUpscaler.Core/
+COPY CheapUpscaler.Components/ ./CheapUpscaler.Components/
 COPY CheapUpscaler.Worker/ ./CheapUpscaler.Worker/
 
 # Build and publish
@@ -31,34 +33,45 @@ RUN dotnet publish CheapUpscaler.Worker/CheapUpscaler.Worker.csproj \
 # ============================================
 # Stage 2: Runtime Stage with GPU Support
 # ============================================
-FROM nvidia/cuda:12.3.2-cudnn9-runtime-ubuntu22.04 AS runtime
+FROM nvidia/cuda:12.6.3-cudnn-runtime-ubuntu24.04 AS runtime
 
 # Avoid prompts during package installation
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install system dependencies
+# Install base dependencies and add FFmpeg 7 PPA
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    # Python
-    python3.11 \
-    python3.11-venv \
+    software-properties-common \
+    && add-apt-repository -y ppa:ubuntuhandbook1/ffmpeg7 \
+    && apt-get update && apt-get install -y --no-install-recommends \
+    # Python (including dev headers for VapourSynth compilation)
+    python3 \
+    python3-dev \
+    python3-venv \
     python3-pip \
-    # FFmpeg
+    # FFmpeg 7 from PPA
     ffmpeg \
-    # Build tools for VapourSynth plugins
+    # Build tools for VapourSynth
     build-essential \
     pkg-config \
     libffi-dev \
-    # Video libraries
+    autoconf \
+    automake \
+    libtool \
+    nasm \
+    # Video libraries (FFmpeg 7 dev packages)
     libavcodec-dev \
     libavformat-dev \
     libavutil-dev \
     libswscale-dev \
+    libswresample-dev \
     # Additional utilities
     wget \
     curl \
     git \
     # .NET runtime dependencies
     libicu-dev \
+    && apt-get remove -y software-properties-common \
+    && apt-get autoremove -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Install .NET 10 ASP.NET Core Runtime
@@ -68,19 +81,87 @@ RUN wget https://dot.net/v1/dotnet-install.sh -O dotnet-install.sh \
     && ln -s /usr/share/dotnet/dotnet /usr/bin/dotnet \
     && rm dotnet-install.sh
 
-# Set up Python
-RUN ln -sf /usr/bin/python3.11 /usr/bin/python3 \
-    && ln -sf /usr/bin/python3.11 /usr/bin/python
+# Set up Python and install Cython (needed for VapourSynth build)
+RUN ln -sf /usr/bin/python3 /usr/bin/python \
+    && pip3 install --no-cache-dir --break-system-packages cython
 
-# Install VapourSynth
-RUN pip3 install --no-cache-dir vapoursynth
+# Install zimg (VapourSynth dependency)
+RUN git clone --depth 1 --branch release-3.0.5 https://github.com/sekrit-twc/zimg.git /tmp/zimg \
+    && cd /tmp/zimg \
+    && ./autogen.sh \
+    && ./configure --prefix=/usr/local \
+    && make -j$(nproc) \
+    && make install \
+    && ldconfig \
+    && rm -rf /tmp/zimg
 
-# Install VapourSynth plugins for AI upscaling
-RUN pip3 install --no-cache-dir \
-    vsmlrt \
+# Install VapourSynth from source (R73 to match pip bindings)
+RUN git clone --depth 1 --branch R73 https://github.com/vapoursynth/vapoursynth.git /tmp/vapoursynth \
+    && cd /tmp/vapoursynth \
+    && ./autogen.sh \
+    && ./configure --prefix=/usr/local \
+    && make -j$(nproc) \
+    && make install \
+    && ldconfig \
+    && rm -rf /tmp/vapoursynth
+
+# Install VapourSynth Python bindings (must match core version R73)
+RUN pip3 install --no-cache-dir --break-system-packages vapoursynth==73
+
+# Install ffms2 VapourSynth plugin (latest version for FFmpeg 7.x)
+RUN git clone --depth 1 https://github.com/FFMS/ffms2.git /tmp/ffms2 \
+    && cd /tmp/ffms2 \
+    && ./autogen.sh \
+    && ./configure --prefix=/usr/local --enable-shared \
+    && make -j$(nproc) \
+    && make install \
+    && ldconfig \
+    && mkdir -p /usr/local/lib/vapoursynth \
+    && ln -sf /usr/local/lib/libffms2.so /usr/local/lib/vapoursynth/libffms2.so \
+    && rm -rf /tmp/ffms2
+
+# Install Python packages for video processing and AI upscaling
+RUN pip3 install --no-cache-dir --break-system-packages \
+    numpy \
     vsrealesrgan \
-    vspyplugin \
-    numpy
+    vsrife \
+    vskernels \
+    vstools
+
+# Pre-download Real-ESRGAN models (as root, before switching to appuser)
+# This avoids permission issues when the container runs as non-root
+# Model names use underscores (e.g., realesr_animevideov3, not realesr-animevideov3)
+RUN python3 -c "from vsrealesrgan import download_model; \
+    download_model('https://github.com/HolyWu/vs-realesrgan/releases/download/model/RealESRGAN_x4plus.pth'); \
+    download_model('https://github.com/HolyWu/vs-realesrgan/releases/download/model/RealESRGAN_x4plus_anime_6B.pth'); \
+    download_model('https://github.com/HolyWu/vs-realesrgan/releases/download/model/RealESRGAN_x2plus.pth'); \
+    download_model('https://github.com/HolyWu/vs-realesrgan/releases/download/model/realesr_animevideov3.pth'); \
+    download_model('https://github.com/HolyWu/vs-realesrgan/releases/download/model/realesr_general_x4v3.pth'); \
+    print('All Real-ESRGAN models downloaded successfully')"
+
+# Set VapourSynth plugin path
+ENV VAPOURSYNTH_PLUGIN_PATH=/usr/local/lib/vapoursynth
+RUN mkdir -p /usr/local/lib/vapoursynth
+
+# Download and install vs-mlrt (TensorRT/NCNN backend for AI models)
+# Install zstd from universe repository, then download and extract vs-mlrt
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends software-properties-common \
+    && add-apt-repository universe \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends zstd \
+    && wget -q https://github.com/AmusementClub/vs-mlrt/releases/download/v14.test3/vsmlrt-linux-x64-cuda.v14.test3.tar.zst -O /tmp/vsmlrt.tar.zst \
+    && cd /tmp && tar --zstd -xf vsmlrt.tar.zst \
+    && cp /tmp/vsmlrt-linux-x64-cuda/vsmlrt.so /usr/local/lib/vapoursynth/ \
+    && cp -r /tmp/vsmlrt-linux-x64-cuda/vsmlrt-cuda/* /usr/local/lib/ 2>/dev/null || true \
+    && ldconfig \
+    && rm -rf /tmp/vsmlrt* \
+    && apt-get remove -y software-properties-common zstd \
+    && apt-get autoremove -y \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create models directory for ONNX/TRT models
+RUN mkdir -p /data/models
 
 # Create application user
 RUN useradd -m -s /bin/bash appuser
@@ -114,7 +195,7 @@ COPY --from=build --chown=appuser:appuser /app/publish .
 # Switch to non-root user
 USER appuser
 
-# Expose API port
+# Expose port (serves both REST API and Blazor Server UI)
 EXPOSE 5080
 
 # Health check

@@ -1,0 +1,43 @@
+@page "/Error"
+@using System.Diagnostics
+
+<PageTitle>Error</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Medium" Class="mt-8">
+    <MudStack Spacing="4" AlignItems="AlignItems.Center">
+        <MudIcon Icon="@Icons.Material.Filled.Error" Size="Size.Large" Color="Color.Error" />
+        <MudText Typo="Typo.h4" Color="Color.Error">Error</MudText>
+        <MudText Typo="Typo.body1" Align="Align.Center">
+            An error occurred while processing your request.
+        </MudText>
+
+        @if (ShowRequestId)
+        {
+            <MudText Typo="Typo.body2">
+                <strong>Request ID:</strong> <code>@RequestId</code>
+            </MudText>
+        }
+
+        <MudAlert Severity="Severity.Info" Class="mt-4">
+            <MudText Typo="Typo.body2">
+                <strong>Development Mode</strong><br />
+                Swapping to Development environment will display more detailed information about the error that occurred.
+            </MudText>
+        </MudAlert>
+
+        <MudButton Variant="Variant.Filled"
+                   Color="Color.Primary"
+                   StartIcon="@Icons.Material.Filled.Home"
+                   Href="/">
+            Go Home
+        </MudButton>
+    </MudStack>
+</MudContainer>
+
+@code{
+    private string? RequestId { get; set; }
+    private bool ShowRequestId => !string.IsNullOrEmpty(RequestId);
+
+    protected override void OnInitialized() =>
+        RequestId = Activity.Current?.Id;
+}

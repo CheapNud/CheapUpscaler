@@ -227,6 +227,7 @@ public record RealEsrganJobSettings
     public int Scale { get; init; } = 4;
     public int TileSize { get; init; } = 0;
     public bool UseFp16 { get; init; } = true;
+    public bool UseTensorRT { get; init; } = false;
 }
 
 public record NonAiJobSettings

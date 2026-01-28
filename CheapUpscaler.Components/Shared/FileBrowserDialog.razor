@@ -1,0 +1,300 @@
+@inject IFileBrowserService FileBrowser
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <TitleContent>
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+            <MudIcon Icon="@(Mode == FileBrowserMode.SelectFolder ? Icons.Material.Filled.Folder : Icons.Material.Filled.InsertDriveFile)" />
+            <MudText Typo="Typo.h6">@GetTitle()</MudText>
+        </MudStack>
+    </TitleContent>
+    <DialogContent>
+        <MudStack Spacing="2" Style="min-width: 500px; min-height: 400px;">
+            <!-- Path breadcrumb and navigation -->
+            <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center">
+                <MudIconButton Icon="@Icons.Material.Filled.ArrowUpward"
+                               OnClick="NavigateUp"
+                               Disabled="@(string.IsNullOrEmpty(_currentResult?.ParentPath))"
+                               Size="Size.Small"
+                               Title="Go to parent folder" />
+                <MudIconButton Icon="@Icons.Material.Filled.Refresh"
+                               OnClick="@(() => LoadDirectory(_currentPath))"
+                               Size="Size.Small"
+                               Title="Refresh" />
+                <MudTextField @bind-Value="_currentPath"
+                              Variant="Variant.Outlined"
+                              Margin="Margin.Dense"
+                              Style="flex-grow: 1;"
+                              Adornment="Adornment.End"
+                              AdornmentIcon="@Icons.Material.Filled.KeyboardReturn"
+                              OnAdornmentClick="@(() => LoadDirectory(_currentPath))"
+                              OnKeyDown="OnPathKeyDown" />
+            </MudStack>
+
+            <!-- Quick access / root paths -->
+            @if (_rootPaths.Count > 0)
+            {
+                <MudStack Row="true" Spacing="1" Style="flex-wrap: wrap;">
+                    @foreach (var root in _rootPaths)
+                    {
+                        <MudChip T="string"
+                                 Size="Size.Small"
+                                 Icon="@Icons.Material.Filled.Folder"
+                                 OnClick="@(() => LoadDirectory(root.FullPath))"
+                                 Color="@(_currentPath == root.FullPath ? Color.Primary : Color.Default)">
+                            @root.Name
+                        </MudChip>
+                    }
+                </MudStack>
+            }
+
+            <MudDivider />
+
+            <!-- File/folder list -->
+            @if (_isLoading)
+            {
+                <MudStack AlignItems="AlignItems.Center" Justify="Justify.Center" Style="height: 300px;">
+                    <MudProgressCircular Indeterminate="true" />
+                    <MudText Typo="Typo.body2">Loading...</MudText>
+                </MudStack>
+            }
+            else if (!string.IsNullOrEmpty(_currentResult?.ErrorMessage))
+            {
+                <MudAlert Severity="Severity.Error">@_currentResult.ErrorMessage</MudAlert>
+            }
+            else if (_currentResult?.Items.Count == 0)
+            {
+                <MudStack AlignItems="AlignItems.Center" Justify="Justify.Center" Style="height: 300px;">
+                    <MudIcon Icon="@Icons.Material.Filled.FolderOff" Size="Size.Large" Color="Color.Secondary" />
+                    <MudText Typo="Typo.body2" Color="Color.Secondary">Folder is empty</MudText>
+                </MudStack>
+            }
+            else
+            {
+                <MudList T="FileBrowserItem" Dense="true" Style="max-height: 300px; overflow-y: auto;">
+                    @foreach (var item in _currentResult?.Items ?? [])
+                    {
+                        <MudListItem T="FileBrowserItem"
+                                     OnClick="@(() => OnItemClick(item))"
+                                     OnDoubleClick="@(() => OnItemDoubleClick(item))"
+                                     Class="@GetItemClass(item)">
+                            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Style="width: 100%;">
+                                <MudIcon Icon="@GetItemIcon(item)"
+                                         Color="@(item.IsDirectory ? Color.Warning : Color.Default)"
+                                         Size="Size.Small" />
+                                <MudText Style="flex-grow: 1;">@item.Name</MudText>
+                                @if (!item.IsDirectory && item.Size.HasValue)
+                                {
+                                    <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                        @FormatFileSize(item.Size.Value)
+                                    </MudText>
+                                }
+                            </MudStack>
+                        </MudListItem>
+                    }
+                </MudList>
+            }
+
+            <!-- Selected item display -->
+            @if (Mode != FileBrowserMode.SelectFolder)
+            {
+                <MudTextField @bind-Value="_selectedFileName"
+                              Label="@(Mode == FileBrowserMode.SaveFile ? "Save as" : "Selected file")"
+                              Variant="Variant.Outlined"
+                              Margin="Margin.Dense"
+                              ReadOnly="@(Mode == FileBrowserMode.OpenFile)" />
+            }
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel" Color="Color.Default">Cancel</MudButton>
+        <MudButton OnClick="Submit"
+                   Color="Color.Primary"
+                   Variant="Variant.Filled"
+                   Disabled="@(!CanSubmit())">
+            @GetSubmitText()
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; } = null!;
+
+    [Parameter]
+    public FileBrowserMode Mode { get; set; } = FileBrowserMode.OpenFile;
+
+    [Parameter]
+    public string? InitialPath { get; set; }
+
+    [Parameter]
+    public string[]? FileExtensions { get; set; }
+
+    [Parameter]
+    public string? DefaultFileName { get; set; }
+
+    private string _currentPath = string.Empty;
+    private string _selectedFileName = string.Empty;
+    private FileBrowserItem? _selectedItem;
+    private FileBrowserResult? _currentResult;
+    private List<FileBrowserItem> _rootPaths = [];
+    private bool _isLoading;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _selectedFileName = DefaultFileName ?? string.Empty;
+        _rootPaths = (await FileBrowser.GetRootPathsAsync()).ToList();
+
+        var startPath = InitialPath;
+        if (string.IsNullOrEmpty(startPath) && _rootPaths.Count > 0)
+        {
+            startPath = _rootPaths[0].FullPath;
+        }
+
+        if (!string.IsNullOrEmpty(startPath))
+        {
+            await LoadDirectory(startPath);
+        }
+    }
+
+    private async Task LoadDirectory(string path)
+    {
+        _isLoading = true;
+        _selectedItem = null;
+        StateHasChanged();
+
+        try
+        {
+            _currentResult = await FileBrowser.GetDirectoryContentsAsync(path, FileExtensions);
+            _currentPath = _currentResult.CurrentPath;
+        }
+        finally
+        {
+            _isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task NavigateUp()
+    {
+        if (!string.IsNullOrEmpty(_currentResult?.ParentPath))
+        {
+            await LoadDirectory(_currentResult.ParentPath);
+        }
+    }
+
+    private async Task OnPathKeyDown(KeyboardEventArgs args)
+    {
+        if (args.Key == "Enter")
+        {
+            await LoadDirectory(_currentPath);
+        }
+    }
+
+    private void OnItemClick(FileBrowserItem item)
+    {
+        _selectedItem = item;
+        if (!item.IsDirectory)
+        {
+            _selectedFileName = item.Name;
+        }
+    }
+
+    private async Task OnItemDoubleClick(FileBrowserItem item)
+    {
+        if (item.IsDirectory)
+        {
+            await LoadDirectory(item.FullPath);
+        }
+        else if (Mode == FileBrowserMode.OpenFile)
+        {
+            _selectedItem = item;
+            _selectedFileName = item.Name;
+            await Submit();
+        }
+    }
+
+    private bool CanSubmit()
+    {
+        return Mode switch
+        {
+            FileBrowserMode.SelectFolder => !string.IsNullOrEmpty(_currentPath),
+            FileBrowserMode.OpenFile => _selectedItem != null && !_selectedItem.IsDirectory,
+            FileBrowserMode.SaveFile => !string.IsNullOrWhiteSpace(_selectedFileName),
+            _ => false
+        };
+    }
+
+    private async Task Submit()
+    {
+        string result = Mode switch
+        {
+            FileBrowserMode.SelectFolder => _currentPath,
+            FileBrowserMode.OpenFile => _selectedItem?.FullPath ?? string.Empty,
+            FileBrowserMode.SaveFile => Path.Combine(_currentPath, _selectedFileName),
+            _ => string.Empty
+        };
+
+        if (!string.IsNullOrEmpty(result))
+        {
+            MudDialog.Close(DialogResult.Ok(result));
+        }
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+
+    private string GetTitle() => Mode switch
+    {
+        FileBrowserMode.SelectFolder => "Select Folder",
+        FileBrowserMode.OpenFile => "Open File",
+        FileBrowserMode.SaveFile => "Save File",
+        _ => "Browse"
+    };
+
+    private string GetSubmitText() => Mode switch
+    {
+        FileBrowserMode.SelectFolder => "Select",
+        FileBrowserMode.OpenFile => "Open",
+        FileBrowserMode.SaveFile => "Save",
+        _ => "OK"
+    };
+
+    private static string GetItemIcon(FileBrowserItem item)
+    {
+        if (item.IsDirectory)
+            return Icons.Material.Filled.Folder;
+
+        return item.Extension?.ToLowerInvariant() switch
+        {
+            ".mp4" or ".mkv" or ".avi" or ".mov" or ".webm" => Icons.Material.Filled.VideoFile,
+            ".mp3" or ".wav" or ".flac" or ".aac" => Icons.Material.Filled.AudioFile,
+            ".jpg" or ".jpeg" or ".png" or ".gif" or ".bmp" => Icons.Material.Filled.Image,
+            _ => Icons.Material.Filled.InsertDriveFile
+        };
+    }
+
+    private string GetItemClass(FileBrowserItem item)
+    {
+        return _selectedItem == item ? "mud-selected-item" : "";
+    }
+
+    private static string FormatFileSize(long bytes)
+    {
+        string[] sizes = ["B", "KB", "MB", "GB", "TB"];
+        int order = 0;
+        double size = bytes;
+        while (size >= 1024 && order < sizes.Length - 1)
+        {
+            order++;
+            size /= 1024;
+        }
+        return $"{size:0.##} {sizes[order]}";
+    }
+
+    public enum FileBrowserMode
+    {
+        OpenFile,
+        SaveFile,
+        SelectFolder
+    }
+}

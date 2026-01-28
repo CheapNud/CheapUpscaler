@@ -1,5 +1,6 @@
 <Solution>
   <Project Path="CheapUpscaler.Blazor/CheapUpscaler.Blazor.csproj" />
+  <Project Path="CheapUpscaler.Components/CheapUpscaler.Components.csproj" />
   <Project Path="CheapUpscaler.Core/CheapUpscaler.Core.csproj" />
   <Project Path="CheapUpscaler.Shared/CheapUpscaler.Shared.csproj" />
   <Project Path="CheapUpscaler.Worker/CheapUpscaler.Worker.csproj" />

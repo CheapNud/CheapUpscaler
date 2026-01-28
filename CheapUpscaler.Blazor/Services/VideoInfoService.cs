@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using CheapHelpers.MediaProcessing.Services;
-using CheapUpscaler.Blazor.Models;
+using CheapUpscaler.Components.Models;
+using CheapUpscaler.Components.Services;
 using FFMpegCore;
 
 namespace CheapUpscaler.Blazor.Services;
