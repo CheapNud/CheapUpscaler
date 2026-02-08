@@ -240,4 +240,26 @@ Headless worker with REST API + Blazor UI for Docker deployment on Tranquility (
 - [x] Docker container with nvidia-docker GPU passthrough (multi-stage Dockerfile + docker-compose.yml)
 - [x] Local Docker Desktop smoke test passed
 
-**Next step:** Deploy to Helios-One with GPU passthrough — see [TODO-DOCKER-TESTING.md](TODO-DOCKER-TESTING.md)
+### Docker Testing
+
+**Target Environment:**
+- **Proxmox Host:** Tranquility
+- **Target VM:** Helios-One (Ubuntu Server with GPU passthrough for Plex)
+- Local Hyper-V Ubuntu won't help — no GPU passthrough available
+
+**Phase 1: Local Smoke Test (Docker Desktop) - COMPLETE**
+- [x] Verify container builds successfully
+- [x] Test basic functionality (CPU-mode if supported)
+- [x] Check dependencies resolve correctly
+
+**Phase 2: Helios-One Deployment (Full GPU Test)**
+- [ ] Verify NVIDIA Container Toolkit is installed:
+  ```bash
+  nvidia-ctk --version
+  ```
+- [ ] Verify Docker can see GPU:
+  ```bash
+  docker run --rm --gpus all nvidia/cuda:12.0-base nvidia-smi
+  ```
+- [ ] Deploy container with GPU access
+- [ ] Validate upscaling works with GPU acceleration
