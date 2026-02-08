@@ -150,6 +150,71 @@ AI video upscaling and frame interpolation. Takes rendered video output (from Ch
 
 ## Future Enhancements
 
+### API Key Authentication (Shared)
+
+**Applies to both Worker (Docker) and Desktop (Blazor) — not Docker-only.**
+Currently the API is completely unsecured. All endpoints are wide open.
+
+**Implementation:**
+- API key middleware in `CheapUpscaler.Shared` so both projects can register it
+- Checks `X-Api-Key` header against configured key
+- Key configured via:
+  - Worker: environment variable `Worker__ApiKey` in docker-compose.yml
+  - Desktop: `AppSettings.json` or settings UI
+- Blazor UI requests (same origin) bypass the check — internal SignalR/Blazor calls are not API consumers
+- `/health` endpoint excluded from auth (monitoring needs unauthenticated access)
+- Return `401 Unauthorized` with no body on invalid/missing key
+
+**Tautulli compatibility:**
+Tautulli webhook agent supports custom headers — configure `{"X-Api-Key": "your-key"}` on the webhook notification agent.
+
+### Queue Control API
+
+Expose `WorkerQueueService` pause/resume/throttle through REST endpoints for external automation.
+The service already has `PauseQueue()`, `ResumeQueue()`, `IsQueuePaused` — none are exposed in `JobsController`.
+Endpoints must be protected by the API key middleware above.
+
+**Proposed endpoints:**
+- `POST /api/queue/pause` — pause processing (finish current job, don't start new ones)
+  - Accepts optional `{ "reason": "Plex transcode active", "source": "tautulli" }`
+- `POST /api/queue/resume` — resume processing
+  - Accepts optional `{ "source": "tautulli" }`
+- `GET  /api/queue/status` — returns `{ isPaused, pauseReason, pauseSource, pausedAt, activeJobs, pendingJobs, maxConcurrentJobs }`
+- `PUT  /api/queue/settings` — adjust `MaxConcurrentJobs` at runtime
+
+**Pause reason tracking (UI):**
+The queue can be paused for multiple reasons — the UI MUST show WHY it's paused:
+- "Paused: Plex transcode active (via Tautulli)" — external API pause
+- "Paused: manually paused" — user clicked pause in UI
+- "Paused: no pending jobs" — auto-pause after queue drained
+- "Paused: scheduled quiet hours" — cron-triggered pause
+Track `PauseReason`, `PauseSource`, and `PausedAt` in `WorkerQueueService` so the Blazor UI
+can display a clear MudAlert explaining the current state instead of just a paused/running toggle.
+
+**Tautulli integration (Plex transcode-aware pausing):**
+Tautulli can distinguish direct play from transcode — native Plex webhooks cannot.
+- Trigger: "Transcode Decision Change" with condition `Video Decision | is | transcode`
+- Playback Start (transcode) → Tautulli webhook → `POST /api/queue/pause { "reason": "Plex transcode active", "source": "tautulli" }`
+- Playback Stop → Tautulli webhook → `POST /api/queue/resume { "source": "tautulli" }`
+- Both containers on same Docker network — HTTP call is just `http://cheapupscaler:5080`
+- Requires Tautulli webhook agent pointing at the queue control endpoint
+
+**Use cases:**
+- Plex (or any service) pauses upscaling during heavy GPU/transcode load
+- Cron job: pause at night for quiet hours, resume in the morning
+- Home Assistant / automation integration
+- Manual throttle from any HTTP client without needing the Blazor UI
+
+**Resource coexistence with Plex (same Helios-One VM, shared GPU):**
+- Plex transcoding uses NVENC/NVDEC (dedicated fixed-function hardware)
+- TensorRT upscaling uses CUDA/Tensor cores (separate hardware blocks)
+- These run simultaneously without directly competing for the same silicon
+- VRAM is the shared resource — Plex transcoding ~100-200MB, Real-ESRGAN 1-4GB depending on tile size/model
+- Docker `cpus`, `cpuset`, `mem_limit` can isolate CPU/RAM between containers
+- Queue pause API enables yielding to Plex on demand
+
+### Other
+
 - [ ] Batch processing (multiple files)
 - [ ] Preset system (save/load processing configurations)
 - [ ] Processing pipeline builder (chain multiple operations)
