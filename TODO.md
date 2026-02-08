@@ -11,7 +11,7 @@ AI video upscaling and frame interpolation. Takes rendered video output (from Ch
 | Phase | Target | Platform | Purpose |
 |-------|--------|----------|---------|
 | **Now** | Desktop App | Windows | Development, testing, local use with GUI |
-| **Future** | Worker Service | Ubuntu Server | 24/7 headless processing on Tranquility |
+| **Done** | Worker Service | Ubuntu Server (Docker) | 24/7 headless processing on Tranquility |
 
 ---
 
@@ -153,7 +153,7 @@ AI video upscaling and frame interpolation. Takes rendered video output (from Ch
 - [ ] Batch processing (multiple files)
 - [ ] Preset system (save/load processing configurations)
 - [ ] Processing pipeline builder (chain multiple operations)
-- [ ] Watch folder for automatic processing
+- [x] Watch folder for automatic processing (Worker service - FileWatcherService)
 - [ ] Integration with CheapShotcutRandomizer (direct handoff)
 - [ ] Hardware benchmark tool
 - [ ] Processing history/statistics
@@ -228,13 +228,16 @@ Issues from PR #2 review and code audit. See: https://github.com/CheapNud/CheapU
 
 ---
 
-## Future: Ubuntu Worker Service
+## Ubuntu Worker Service (CheapUpscaler.Worker) - COMPLETE
 
-When ready to deploy to Tranquility (Ubuntu server):
+Headless worker with REST API + Blazor UI for Docker deployment on Tranquility (Helios-One VM).
 
-- [ ] Create CheapUpscaler.Worker project (.NET Worker Service)
-- [ ] Extract queue processing logic (headless)
-- [ ] API endpoint for job submission
-- [ ] File system watcher for watch folder
-- [ ] Linux path configuration
-- [ ] Docker container with nvidia-docker GPU passthrough
+- [x] Create CheapUpscaler.Worker project (ASP.NET Core + Blazor Server)
+- [x] Extract queue processing logic (WorkerQueueService, WorkerProcessorService)
+- [x] API endpoint for job submission (JobsController - full CRUD + download)
+- [x] File system watcher for watch folder (FileWatcherService)
+- [x] Linux path configuration (LinuxPlatformPaths, LinuxToolLocator)
+- [x] Docker container with nvidia-docker GPU passthrough (multi-stage Dockerfile + docker-compose.yml)
+- [x] Local Docker Desktop smoke test passed
+
+**Next step:** Deploy to Helios-One with GPU passthrough — see [TODO-DOCKER-TESTING.md](TODO-DOCKER-TESTING.md)

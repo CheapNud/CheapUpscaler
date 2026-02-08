@@ -16,7 +16,7 @@
   <ItemGroup>
     <!-- ASP.NET Core OpenAPI (built-in .NET 10 support) -->
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.2" />
-    <PackageReference Include="Swashbuckle.AspNetCore.SwaggerUI" Version="10.1.0" />
+    <PackageReference Include="Swashbuckle.AspNetCore.SwaggerUI" Version="10.1.2" />
 
     <!-- EF Core for job persistence -->
     <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.2" />
