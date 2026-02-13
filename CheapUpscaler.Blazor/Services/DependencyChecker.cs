@@ -367,7 +367,6 @@ public class DependencyChecker(
                 FileName = ffmpegPath,
                 Arguments = "-version",
                 RedirectStandardOutput = true,
-                RedirectStandardError = true,
                 UseShellExecute = false,
                 CreateNoWindow = true
             };
@@ -376,7 +375,11 @@ public class DependencyChecker(
             if (process == null) return null;
 
             var output = process.StandardOutput.ReadLine();
-            process.WaitForExit(5000);
+
+            if (!process.WaitForExit(5000))
+            {
+                try { process.Kill(); } catch { }
+            }
 
             // Parse version from "ffmpeg version N.N.N ..."
             if (output != null)
