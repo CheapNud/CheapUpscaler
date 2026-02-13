@@ -16,13 +16,13 @@
 
   <ItemGroup>
     <!-- DI extension -->
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.2" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.3" />
     <!-- FFmpeg integration -->
     <PackageReference Include="FFMpegCore" Version="5.4.0" />
     <!-- Media processing shared library -->
     <PackageReference Include="CheapHelpers.MediaProcessing" Version="2.0.1" />
     <!-- Logging abstractions for ILogger -->
-    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.2" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.3" />
   </ItemGroup>
 
   <ItemGroup>

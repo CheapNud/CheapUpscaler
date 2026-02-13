@@ -151,7 +151,7 @@ public class DependencyChecker(
         var info = new DependencyInfo
         {
             Name = "vs-mlrt",
-            Description = "VapourSynth ML Runtime for Real-CUGAN and Real-ESRGAN",
+            Description = "VapourSynth ML Runtime (only needed for TensorRT backend, not required for Torch/PyTorch)",
             Category = DependencyCategory.Recommended,
             InstallInstructions = "Install via pip: pip install vsmlrt",
             DownloadUrl = "https://github.com/AmusementClub/vs-mlrt"
