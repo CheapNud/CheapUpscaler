@@ -399,6 +399,8 @@ public class VapourSynthEnvironment : IVapourSynthEnvironment
         };
 
         process.Start();
+        var outputTask = process.StandardOutput.ReadToEndAsync();
+        var errorTask = process.StandardError.ReadToEndAsync();
 
         using var cts = new CancellationTokenSource(timeoutMs);
         try
@@ -411,8 +413,8 @@ public class VapourSynthEnvironment : IVapourSynthEnvironment
             return (-1, string.Empty, "Process timed out");
         }
 
-        var output = await process.StandardOutput.ReadToEndAsync();
-        var error = await process.StandardError.ReadToEndAsync();
+        var output = await outputTask;
+        var error = await errorTask;
 
         return (process.ExitCode, output, error);
     }

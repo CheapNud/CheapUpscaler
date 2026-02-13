@@ -112,21 +112,27 @@ public class RealEsrganService
             {
                 if (test != null)
                 {
-                    var testOutput = await test.StandardOutput.ReadToEndAsync(cancellationToken);
-                    var testError = await test.StandardError.ReadToEndAsync(cancellationToken);
+                    // Read both streams in parallel to avoid deadlock
+                    // Sequential awaiting causes deadlock when the process fills one pipe buffer
+                    var stdoutTask = test.StandardOutput.ReadToEndAsync(cancellationToken);
+                    var stderrTask = test.StandardError.ReadToEndAsync(cancellationToken);
 
                     // Wait up to 10 minutes for model download on first run
-                    using var timeoutCts = new CancellationTokenSource(TimeSpan.FromMinutes(10));
+                    using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                    timeoutCts.CancelAfter(TimeSpan.FromMinutes(10));
                     try
                     {
                         await test.WaitForExitAsync(timeoutCts.Token);
                     }
-                    catch (OperationCanceledException)
+                    catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
                     {
                         _logger?.LogWarning("VapourSynth script test timed out after 10 minutes");
                         try { test.Kill(); } catch { }
                         throw new TimeoutException("VapourSynth script test timed out. Model download may have failed.");
                     }
+
+                    var testOutput = await stdoutTask;
+                    var testError = await stderrTask;
 
                     if (test.ExitCode != 0)
                     {

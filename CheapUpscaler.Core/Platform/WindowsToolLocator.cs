@@ -200,9 +200,11 @@ public class WindowsToolLocator(
             };
 
             process.Start();
-            var output = await process.StandardOutput.ReadToEndAsync(cancellationToken);
-            var error = await process.StandardError.ReadToEndAsync(cancellationToken);
+            var outputTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
+            var errorTask = process.StandardError.ReadToEndAsync(cancellationToken);
             await process.WaitForExitAsync(cancellationToken);
+            var output = await outputTask;
+            var error = await errorTask;
 
             var combinedOutput = !string.IsNullOrWhiteSpace(output) ? output : error;
             if (!string.IsNullOrWhiteSpace(combinedOutput))
