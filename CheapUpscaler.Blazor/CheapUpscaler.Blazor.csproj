@@ -18,13 +18,13 @@
 
   <ItemGroup>
     <!-- Desktop framework with Avalonia + Photino + Blazor -->
-    <PackageReference Include="CheapAvaloniaBlazor" Version="2.1.1" />
+    <PackageReference Include="CheapAvaloniaBlazor" Version="3.0.0" />
     <!-- UI component library -->
-    <PackageReference Include="MudBlazor" Version="8.15.0" />
+    <PackageReference Include="MudBlazor" Version="9.0.0" />
     <!-- Database for job persistence -->
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.3" />
     <!-- Media processing (Windows services: SVP, WMI detection) -->
-    <PackageReference Include="CheapHelpers.MediaProcessing" Version="2.0.1" />
+    <PackageReference Include="CheapHelpers.MediaProcessing" Version="2.1.0" />
   </ItemGroup>
 
   <ItemGroup>
