@@ -162,21 +162,23 @@ public class VapourSynthEnvironment : IVapourSynthEnvironment
     {
         try
         {
-            var process = new SysProcess
+            using var process = new SysProcess
             {
                 StartInfo = new ProcessStartInfo
                 {
                     FileName = pythonCommand,
                     Arguments = "--version",
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
                     UseShellExecute = false,
                     CreateNoWindow = true
                 }
             };
 
             process.Start();
-            process.WaitForExit(2000);
+            if (!process.WaitForExit(2000))
+            {
+                try { process.Kill(); } catch { }
+                return false;
+            }
             return process.ExitCode == 0;
         }
         catch
@@ -209,23 +211,23 @@ public class VapourSynthEnvironment : IVapourSynthEnvironment
         // Try to find in PATH
         try
         {
-            var process = new SysProcess
+            using var process = new SysProcess
             {
                 StartInfo = new ProcessStartInfo
                 {
                     FileName = "vspipe",
                     Arguments = "--version",
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
                     UseShellExecute = false,
                     CreateNoWindow = true
                 }
             };
 
             process.Start();
-            process.WaitForExit(2000);
-
-            if (process.ExitCode == 0)
+            if (!process.WaitForExit(2000))
+            {
+                try { process.Kill(); } catch { }
+            }
+            else if (process.ExitCode == 0)
             {
                 return "vspipe";
             }
@@ -239,7 +241,7 @@ public class VapourSynthEnvironment : IVapourSynthEnvironment
     {
         try
         {
-            var process = new SysProcess
+            using var process = new SysProcess
             {
                 StartInfo = new ProcessStartInfo
                 {
@@ -253,9 +255,21 @@ public class VapourSynthEnvironment : IVapourSynthEnvironment
             };
 
             process.Start();
+
+            // Read both streams in parallel to avoid pipe buffer deadlock
+            string? errorOutput = null;
+            var stderrThread = new Thread(() => errorOutput = process.StandardError.ReadToEnd())
+            { IsBackground = true };
+            stderrThread.Start();
+
             var output = process.StandardOutput.ReadToEnd();
-            var errorOutput = process.StandardError.ReadToEnd();
-            process.WaitForExit(2000);
+            stderrThread.Join(2000);
+
+            if (!process.WaitForExit(2000))
+            {
+                try { process.Kill(); } catch { }
+                return null;
+            }
 
             var versionOutput = !string.IsNullOrWhiteSpace(output) ? output : errorOutput;
 
@@ -280,7 +294,7 @@ public class VapourSynthEnvironment : IVapourSynthEnvironment
 
         try
         {
-            var process = new SysProcess
+            using var process = new SysProcess
             {
                 StartInfo = new ProcessStartInfo
                 {
@@ -294,8 +308,20 @@ public class VapourSynthEnvironment : IVapourSynthEnvironment
             };
 
             process.Start();
+
+            // Drain stderr on background thread to prevent pipe buffer deadlock
+            var stderrThread = new Thread(() => process.StandardError.ReadToEnd())
+            { IsBackground = true };
+            stderrThread.Start();
+
             var output = process.StandardOutput.ReadToEnd();
-            process.WaitForExit(2000);
+            stderrThread.Join(2000);
+
+            if (!process.WaitForExit(2000))
+            {
+                try { process.Kill(); } catch { }
+                return null;
+            }
 
             if (process.ExitCode == 0 && !string.IsNullOrWhiteSpace(output))
             {
@@ -336,21 +362,30 @@ public class VapourSynthEnvironment : IVapourSynthEnvironment
 
         try
         {
-            var process = new SysProcess
+            using var process = new SysProcess
             {
                 StartInfo = new ProcessStartInfo
                 {
                     FileName = _vspipePath,
                     Arguments = "--version",
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
                     UseShellExecute = false,
                     CreateNoWindow = true
                 }
             };
 
             process.Start();
-            await process.WaitForExitAsync();
+
+            using var cts = new CancellationTokenSource(2000);
+            try
+            {
+                await process.WaitForExitAsync(cts.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                try { process.Kill(); } catch { }
+                return false;
+            }
+
             return process.ExitCode == 0;
         }
         catch
@@ -385,7 +420,7 @@ public class VapourSynthEnvironment : IVapourSynthEnvironment
     {
         EnsureInitialized();
 
-        var process = new SysProcess
+        using var process = new SysProcess
         {
             StartInfo = new ProcessStartInfo
             {
@@ -428,14 +463,13 @@ public class VapourSynthEnvironment : IVapourSynthEnvironment
 
         try
         {
-            var process = new SysProcess
+            using var process = new SysProcess
             {
                 StartInfo = new ProcessStartInfo
                 {
                     FileName = "where",
                     Arguments = _pythonPath,
                     RedirectStandardOutput = true,
-                    RedirectStandardError = true,
                     UseShellExecute = false,
                     CreateNoWindow = true
                 }
@@ -443,7 +477,17 @@ public class VapourSynthEnvironment : IVapourSynthEnvironment
 
             process.Start();
             var output = await process.StandardOutput.ReadToEndAsync();
-            await process.WaitForExitAsync();
+
+            using var cts = new CancellationTokenSource(2000);
+            try
+            {
+                await process.WaitForExitAsync(cts.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                try { process.Kill(); } catch { }
+                return _pythonPath;
+            }
 
             if (process.ExitCode == 0 && !string.IsNullOrWhiteSpace(output))
             {

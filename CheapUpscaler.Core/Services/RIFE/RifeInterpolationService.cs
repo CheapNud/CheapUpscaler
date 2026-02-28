@@ -200,21 +200,23 @@ public class RifeInterpolationService
     {
         try
         {
-            var process = new SysProcess
+            using var process = new SysProcess
             {
                 StartInfo = new ProcessStartInfo
                 {
                     FileName = pythonCommand,
                     Arguments = "--version",
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
                     UseShellExecute = false,
                     CreateNoWindow = true
                 }
             };
 
             process.Start();
-            process.WaitForExit(2000);
+            if (!process.WaitForExit(2000))
+            {
+                try { process.Kill(); } catch { }
+                return false;
+            }
             return process.ExitCode == 0;
         }
         catch

@@ -16,7 +16,7 @@
   <ItemGroup>
     <!-- ASP.NET Core OpenAPI (built-in .NET 10 support) -->
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.3" />
-    <PackageReference Include="Swashbuckle.AspNetCore.SwaggerUI" Version="10.1.2" />
+    <PackageReference Include="Swashbuckle.AspNetCore.SwaggerUI" Version="10.1.4" />
 
     <!-- EF Core for job persistence -->
     <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.3" />
@@ -28,10 +28,10 @@
     <PackageReference Include="Serilog.Sinks.File" Version="7.0.0" />
 
     <!-- Blazor Server UI -->
-    <PackageReference Include="MudBlazor" Version="8.15.0" />
+    <PackageReference Include="MudBlazor" Version="9.0.0" />
 
     <!-- Media processing (for video info, hardware detection, etc.) -->
-    <PackageReference Include="CheapHelpers.MediaProcessing" Version="2.0.1" />
+    <PackageReference Include="CheapHelpers.MediaProcessing" Version="2.1.0" />
   </ItemGroup>
 
   <ItemGroup>
