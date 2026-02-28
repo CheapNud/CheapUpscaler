@@ -362,21 +362,30 @@ public class VapourSynthEnvironment : IVapourSynthEnvironment
 
         try
         {
-            var process = new SysProcess
+            using var process = new SysProcess
             {
                 StartInfo = new ProcessStartInfo
                 {
                     FileName = _vspipePath,
                     Arguments = "--version",
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
                     UseShellExecute = false,
                     CreateNoWindow = true
                 }
             };
 
             process.Start();
-            await process.WaitForExitAsync();
+
+            using var cts = new CancellationTokenSource(2000);
+            try
+            {
+                await process.WaitForExitAsync(cts.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                try { process.Kill(); } catch { }
+                return false;
+            }
+
             return process.ExitCode == 0;
         }
         catch
@@ -411,7 +420,7 @@ public class VapourSynthEnvironment : IVapourSynthEnvironment
     {
         EnsureInitialized();
 
-        var process = new SysProcess
+        using var process = new SysProcess
         {
             StartInfo = new ProcessStartInfo
             {
@@ -454,14 +463,13 @@ public class VapourSynthEnvironment : IVapourSynthEnvironment
 
         try
         {
-            var process = new SysProcess
+            using var process = new SysProcess
             {
                 StartInfo = new ProcessStartInfo
                 {
                     FileName = "where",
                     Arguments = _pythonPath,
                     RedirectStandardOutput = true,
-                    RedirectStandardError = true,
                     UseShellExecute = false,
                     CreateNoWindow = true
                 }
@@ -469,7 +477,17 @@ public class VapourSynthEnvironment : IVapourSynthEnvironment
 
             process.Start();
             var output = await process.StandardOutput.ReadToEndAsync();
-            await process.WaitForExitAsync();
+
+            using var cts = new CancellationTokenSource(2000);
+            try
+            {
+                await process.WaitForExitAsync(cts.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                try { process.Kill(); } catch { }
+                return _pythonPath;
+            }
 
             if (process.ExitCode == 0 && !string.IsNullOrWhiteSpace(output))
             {
