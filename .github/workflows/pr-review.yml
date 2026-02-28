@@ -93,13 +93,15 @@ jobs:
 
         Format your review as:
         1. **Summary** (1-2 sentences max)
-        2. **Issues** (only bugs, security problems, deadlocks, resource leaks, or breaking changes - skip this section entirely if none found)
-        3. **Verdict**: APPROVE, REQUEST CHANGES, or COMMENT
+        2. **Code Quality** followed by a 1-5 star rating using filled ⭐ and empty ☆ (e.g. ⭐⭐⭐⭐☆). Below the rating, add one short sentence highlighting a strength or positive aspect of the PR.
+        3. **Issues** (only bugs, security problems, deadlocks, resource leaks, or breaking changes - skip this section entirely if none found). Prefix each issue with a severity orb: 🔴 Critical, 🟡 Warning, 🟢 Minor. Place the orb directly before the issue title, e.g. 🔴 DependencyChecker.cs — process not disposed. Do NOT put orbs on section headers.
+        4. **Verdict**: APPROVE, REQUEST CHANGES, or COMMENT
+           - If REQUEST CHANGES: list the specific changes needed as a short bullet list directly under the verdict
+           - If APPROVE or COMMENT: no extra detail needed
 
         Rules:
         - Do NOT comment on style, naming, or minor preferences
         - Do NOT suggest nice-to-have improvements or refactors
-        - Do NOT praise code or add filler text
         - Only raise issues you are confident are real problems
         - If everything looks fine, just say so in 1-2 lines and approve
 
