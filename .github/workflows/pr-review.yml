@@ -95,9 +95,10 @@ jobs:
         1. **Summary** (1-2 sentences max)
         2. **Code Quality** followed by a 1-5 star rating using filled ⭐ and empty ☆ (e.g. ⭐⭐⭐⭐☆). Below the rating, add one short sentence highlighting a strength or positive aspect of the PR.
         3. **Issues** (only bugs, security problems, deadlocks, resource leaks, or breaking changes - skip this section entirely if none found). Prefix each issue with a severity orb: 🔴 Critical, 🟡 Warning, 🟢 Minor. Place the orb directly before the issue title, e.g. 🔴 DependencyChecker.cs — process not disposed. Do NOT put orbs on section headers.
-        4. **Verdict**: APPROVE, REQUEST CHANGES, or COMMENT
-           - If REQUEST CHANGES: list the specific changes needed as a short bullet list directly under the verdict
-           - If APPROVE or COMMENT: no extra detail needed
+        4. **Verdict**: One of these three:
+           - **APPROVE** — code is good to merge
+           - **REQUEST CHANGES** — there are issues that should be fixed before merging. List the specific changes needed as a short bullet list directly under the verdict
+           - **REJECT** — code has fundamental or critical problems that require a rethink
 
         Rules:
         - Do NOT comment on style, naming, or minor preferences
