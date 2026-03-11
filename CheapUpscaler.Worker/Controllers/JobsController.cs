@@ -9,7 +9,7 @@ namespace CheapUpscaler.Worker.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/[controller]")]
-public class JobsController(WorkerQueueService queueService, ILogger<JobsController> logger) : ControllerBase
+public class JobsController(WorkerQueueService queueService, IConfiguration configuration, ILogger<JobsController> logger) : ControllerBase
 {
     /// <summary>
     /// Submit a new upscale job
@@ -32,9 +32,9 @@ public class JobsController(WorkerQueueService queueService, ILogger<JobsControl
         var outputPath = request.OutputPath;
         if (string.IsNullOrWhiteSpace(outputPath))
         {
-            var inputDir = Path.GetDirectoryName(request.InputPath) ?? "";
+            var outputDir = configuration["Worker:OutputPath"] ?? "/data/output";
             var inputName = Path.GetFileNameWithoutExtension(request.InputPath);
-            outputPath = Path.Combine(inputDir, $"{inputName}_upscaled.mp4");
+            outputPath = Path.Combine(outputDir, $"{inputName}_upscaled.mp4");
         }
 
         var job = new UpscaleJob

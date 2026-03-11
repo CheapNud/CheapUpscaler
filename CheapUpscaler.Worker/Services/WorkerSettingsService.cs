@@ -24,6 +24,8 @@ public class WorkerSettingsService : ISettingsService
         Directory.CreateDirectory(dataPath);
         _settingsPath = Path.Combine(dataPath, "worker-settings.json");
 
+        var configuredOutputPath = configuration["Worker:OutputPath"];
+
         // Load settings synchronously in constructor
         if (File.Exists(_settingsPath))
         {
@@ -36,6 +38,12 @@ public class WorkerSettingsService : ISettingsService
             {
                 _settings = new AppSettings();
             }
+        }
+
+        // Default output directory from config if not explicitly set in user settings
+        if (string.IsNullOrWhiteSpace(_settings.Queue.DefaultOutputDirectory) && !string.IsNullOrWhiteSpace(configuredOutputPath))
+        {
+            _settings.Queue.DefaultOutputDirectory = configuredOutputPath;
         }
     }
 

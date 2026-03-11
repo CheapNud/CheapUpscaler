@@ -1,5 +1,7 @@
+using System.Data.Common;
 using CheapUpscaler.Shared.Models;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 
 namespace CheapUpscaler.Shared.Data;
 
@@ -9,6 +11,12 @@ namespace CheapUpscaler.Shared.Data;
 public class UpscaleJobDbContext(DbContextOptions<UpscaleJobDbContext> options) : DbContext(options)
 {
     public DbSet<UpscaleJobEntity> Jobs { get; set; } = null!;
+
+    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
+    {
+        // Enable SQLite WAL mode and busy timeout via connection interceptor
+        optionsBuilder.AddInterceptors(new SqliteWalInterceptor());
+    }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -149,5 +157,40 @@ public class UpscaleJobEntity
         RetryCount = job.RetryCount;
         ProcessId = job.ProcessId;
         MachineName = job.MachineName;
+    }
+}
+
+/// <summary>
+/// Interceptor that enables WAL journal mode and busy timeout on every SQLite connection.
+/// WAL allows concurrent reads during writes; busy_timeout retries instead of failing immediately.
+/// </summary>
+internal sealed class SqliteWalInterceptor : DbConnectionInterceptor
+{
+    public override void ConnectionOpened(DbConnection connection, ConnectionEndEventData eventData)
+    {
+        if (connection is Microsoft.Data.Sqlite.SqliteConnection)
+        {
+            using var pragmaCmd = connection.CreateCommand();
+            pragmaCmd.CommandText = """
+                PRAGMA journal_mode=WAL;
+                PRAGMA busy_timeout=5000;
+                PRAGMA synchronous=NORMAL;
+                """;
+            pragmaCmd.ExecuteNonQuery();
+        }
+    }
+
+    public override async Task ConnectionOpenedAsync(DbConnection connection, ConnectionEndEventData eventData, CancellationToken cancellationToken = default)
+    {
+        if (connection is Microsoft.Data.Sqlite.SqliteConnection)
+        {
+            await using var pragmaCmd = connection.CreateCommand();
+            pragmaCmd.CommandText = """
+                PRAGMA journal_mode=WAL;
+                PRAGMA busy_timeout=5000;
+                PRAGMA synchronous=NORMAL;
+                """;
+            await pragmaCmd.ExecuteNonQueryAsync(cancellationToken);
+        }
     }
 }

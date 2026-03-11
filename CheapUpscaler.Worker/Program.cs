@@ -11,6 +11,12 @@ using Serilog;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Kestrel limits for large video file uploads (50GB max)
+builder.WebHost.ConfigureKestrel(serverOptions =>
+{
+    serverOptions.Limits.MaxRequestBodySize = 50L * 1024 * 1024 * 1024;
+});
+
 // Configure Serilog
 Log.Logger = new LoggerConfiguration()
     .ReadFrom.Configuration(builder.Configuration)
@@ -21,9 +27,14 @@ Log.Logger = new LoggerConfiguration()
 
 builder.Host.UseSerilog();
 
-// Add Blazor Server services
+// Add Blazor Server services with SignalR tuning for large file uploads
 builder.Services.AddRazorComponents()
-    .AddInteractiveServerComponents();
+    .AddInteractiveServerComponents()
+    .AddHubOptions(hubOptions =>
+    {
+        hubOptions.MaximumReceiveMessageSize = 1024 * 1024; // 1MB per SignalR message (default 32KB too small for file streaming)
+        hubOptions.StreamBufferCapacity = 30; // Buffer up to 30 stream items
+    });
 builder.Services.AddMudServices();
 
 // Register web implementations for platform abstractions
@@ -51,9 +62,9 @@ var dataPath = builder.Configuration["Worker:DataPath"]
 Directory.CreateDirectory(dataPath);
 var dbPath = Path.Combine(dataPath, "worker.db");
 
-// Database
+// Database (Cache=Shared enables connection pooling for concurrent access)
 builder.Services.AddDbContextFactory<UpscaleJobDbContext>(options =>
-    options.UseSqlite($"Data Source={dbPath}"));
+    options.UseSqlite($"Data Source={dbPath};Cache=Shared"));
 builder.Services.AddSingleton<IUpscaleJobRepository, UpscaleJobRepository>();
 
 // Queue infrastructure
