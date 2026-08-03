@@ -16,13 +16,15 @@
 
   <ItemGroup>
     <!-- DI extension -->
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.3" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.10" />
     <!-- FFmpeg integration -->
     <PackageReference Include="FFMpegCore" Version="5.4.0" />
     <!-- Media processing shared library -->
     <PackageReference Include="CheapHelpers.MediaProcessing" Version="2.1.0" />
+    <!-- Transitive pin: MediaProcessing pulls vulnerable 0.46.0 (GHSA-6c8g-7p36-r338) -->
+    <PackageReference Include="SharpCompress" Version="0.48.1" />
     <!-- Logging abstractions for ILogger -->
-    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.3" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.10" />
   </ItemGroup>
 
   <ItemGroup>
