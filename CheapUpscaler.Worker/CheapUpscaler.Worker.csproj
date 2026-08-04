@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
 
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFramework>net11.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <Description>Headless worker service for CheapUpscaler video processing</Description>
@@ -15,12 +15,14 @@
 
   <ItemGroup>
     <!-- ASP.NET Core OpenAPI (built-in .NET 10 support) -->
-    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.3" />
-    <PackageReference Include="Swashbuckle.AspNetCore.SwaggerUI" Version="10.1.4" />
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.10" />
+    <PackageReference Include="Swashbuckle.AspNetCore.SwaggerUI" Version="10.2.3" />
+    <!-- Transitive pin: AspNetCore.OpenApi pulls vulnerable 2.0.0 (GHSA-v5pm-xwqc-g5wc) -->
+    <PackageReference Include="Microsoft.OpenApi" Version="2.7.5" />
 
     <!-- EF Core for job persistence -->
-    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.3" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.3" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.10" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.10" />
 
     <!-- Logging -->
     <PackageReference Include="Serilog.AspNetCore" Version="10.0.0" />
@@ -28,10 +30,10 @@
     <PackageReference Include="Serilog.Sinks.File" Version="7.0.0" />
 
     <!-- Blazor Server UI -->
-    <PackageReference Include="MudBlazor" Version="9.0.0" />
+    <PackageReference Include="MudBlazor" Version="9.7.0" />
 
     <!-- Media processing (for video info, hardware detection, etc.) -->
-    <PackageReference Include="CheapHelpers.MediaProcessing" Version="2.1.0" />
+    <PackageReference Include="CheapHelpers.MediaProcessing" Version="3.7.0" />
   </ItemGroup>
 
   <ItemGroup>
