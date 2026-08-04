@@ -1,4 +1,4 @@
-using CheapUpscaler.Components.Services;
+using CheapUpscaler.Shared.Services;
 using Microsoft.AspNetCore.Mvc;
 
 namespace CheapUpscaler.Worker.Controllers;

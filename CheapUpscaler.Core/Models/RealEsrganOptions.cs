@@ -41,7 +41,8 @@ public class RealEsrganOptions
     /// Tile size in pixels (when TileMode is enabled)
     /// Smaller = less VRAM usage, slower processing
     /// Larger = more VRAM usage, faster processing
-    /// Range: 128-1024, Default: 512
+    /// 0 or less = Auto: the service picks a tile size from the GPU's total VRAM (nvidia-smi)
+    /// Range: 128-1024 for a manual override, Default: 512
     /// </summary>
     public int TileSize { get; set; } = 512;
 
@@ -183,8 +184,10 @@ public class RealEsrganOptions
         double baseVram = ModelName.Contains("anime_6B") ? 2.5 : 1.5;
 
         // Calculate processing VRAM based on tile size or full frame
+        // Auto tile size (TileSize <= 0) is only known at processing time, so estimate the
+        // worst case (full frame) rather than reporting zero
         double processingVram;
-        if (TileMode)
+        if (TileMode && TileSize > 0)
         {
             // Tile mode: VRAM depends on tile size
             processingVram = (TileSize * TileSize * ScaleFactor * ScaleFactor * 4.0) / (1024 * 1024 * 1024);

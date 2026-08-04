@@ -24,12 +24,8 @@
                 <MudStack Row="true" Justify="Justify.FlexEnd" Spacing="1">
                     @if (Job.Status == UpscaleJobStatus.Running)
                     {
-                        <MudTooltip Text="Pause">
-                            <MudIconButton Icon="@Icons.Material.Filled.Pause"
-                                           Color="Color.Warning"
-                                           Size="Size.Small"
-                                           OnClick="@(() => OnPause.InvokeAsync(Job.JobId))" />
-                        </MudTooltip>
+                        @* A running job cannot be paused - the external upscaler process has no
+                           pause - so Cancel is the only real action here. *@
                         <MudTooltip Text="Cancel">
                             <MudIconButton Icon="@Icons.Material.Filled.Cancel"
                                            Color="Color.Error"
@@ -54,6 +50,12 @@
                     }
                     else if (Job.Status == UpscaleJobStatus.Pending)
                     {
+                        <MudTooltip Text="Pause">
+                            <MudIconButton Icon="@Icons.Material.Filled.Pause"
+                                           Color="Color.Warning"
+                                           Size="Size.Small"
+                                           OnClick="@(() => OnPause.InvokeAsync(Job.JobId))" />
+                        </MudTooltip>
                         <MudTooltip Text="Cancel">
                             <MudIconButton Icon="@Icons.Material.Filled.Cancel"
                                            Color="Color.Error"

@@ -1,29 +1,29 @@
 using System.Collections.Concurrent;
-using CheapUpscaler.Components.Services;
 using CheapUpscaler.Shared.Data;
 using CheapUpscaler.Shared.Models;
-using CheapUpscaler.Shared.Services;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
-namespace CheapUpscaler.Worker.Services;
+namespace CheapUpscaler.Shared.Services;
 
 /// <summary>
-/// Queue service for processing upscale jobs with Blazor UI support
-/// Implements IUpscaleQueueService for UI integration
+/// The queue engine for both hosts: persists jobs, dispatches them to the host's
+/// <see cref="IUpscaleProcessor"/> and raises progress/status events for the UI.
 /// </summary>
-public class WorkerQueueService : BackgroundService, IUpscaleQueueService
+public class UpscaleQueueService(
+    int maxConcurrentJobs,
+    bool autoPauseWhenIdle,
+    IUpscaleProcessor processor,
+    IUpscaleJobRepository repository,
+    IBackgroundTaskQueue taskQueue,
+    ILogger<UpscaleQueueService> logger) : BackgroundService, IUpscaleQueueService
 {
-    private readonly IBackgroundTaskQueue _taskQueue;
-    private readonly IUpscaleJobRepository _repository;
-    private readonly IWorkerProcessorService _processor;
-    private readonly ILogger<WorkerQueueService> _logger;
+    private const int PausePollMilliseconds = 500;
+
     private readonly ConcurrentDictionary<Guid, UpscaleJob> _jobs = new();
     private readonly ConcurrentDictionary<Guid, CancellationTokenSource> _jobCancellations = new();
-    private readonly SemaphoreSlim _processingSemaphore;
-    private readonly int _maxConcurrentJobs;
-    private readonly bool _autoPauseWhenIdle;
-    private volatile bool _isQueuePaused = true; // Default to paused
+    private readonly SemaphoreSlim _processingSemaphore = new(maxConcurrentJobs, maxConcurrentJobs);
+    private volatile bool _isQueuePaused = true; // Boot paused by design - the user starts the queue
     private bool _isInitialized;
 
     public event EventHandler<UpscaleProgressEventArgs>? ProgressChanged;
@@ -32,53 +32,34 @@ public class WorkerQueueService : BackgroundService, IUpscaleQueueService
 
     public bool IsQueuePaused => _isQueuePaused;
 
-    public WorkerQueueService(
-        IBackgroundTaskQueue taskQueue,
-        IUpscaleJobRepository repository,
-        IWorkerProcessorService processor,
-        IConfiguration configuration,
-        ILogger<WorkerQueueService> logger)
-    {
-        _taskQueue = taskQueue;
-        _repository = repository;
-        _processor = processor;
-        _logger = logger;
-        _maxConcurrentJobs = configuration.GetValue("Worker:MaxConcurrentJobs", 1);
-        _autoPauseWhenIdle = configuration.GetValue("Worker:AutoPauseWhenIdle", false);
-        _processingSemaphore = new SemaphoreSlim(_maxConcurrentJobs, _maxConcurrentJobs);
-    }
-
     public void StartQueue()
     {
         _isQueuePaused = false;
         QueueStatusChanged?.Invoke(this, false);
-        _logger.LogInformation("Queue started");
+        logger.LogInformation("Queue started");
     }
 
     public void StopQueue()
     {
         _isQueuePaused = true;
         QueueStatusChanged?.Invoke(this, true);
-        _logger.LogInformation("Queue paused");
+        logger.LogInformation("Queue paused");
     }
 
     /// <summary>
     /// Add a new job to the queue
     /// </summary>
-    public async Task<Guid> AddJobAsync(UpscaleJob job)
+    public async Task<Guid> AddJobAsync(UpscaleJob job, CancellationToken cancellationToken = default)
     {
         job.QueuedAt = DateTime.UtcNow;
         job.Status = UpscaleJobStatus.Pending;
 
-        await _repository.AddAsync(job);
+        await repository.AddAsync(job);
         _jobs[job.JobId] = job;
 
-        await _taskQueue.QueueBackgroundWorkItemAsync(async token =>
-        {
-            await ProcessJobAsync(job.JobId, token);
-        });
+        await EnqueueAsync(job.JobId, cancellationToken);
 
-        _logger.LogInformation("Job {JobId} added to queue", job.JobId);
+        logger.LogInformation("Job {JobId} added to queue", job.JobId);
         return job.JobId;
     }
 
@@ -100,74 +81,80 @@ public class WorkerQueueService : BackgroundService, IUpscaleQueueService
     }
 
     /// <summary>
-    /// Cancel a job
+    /// Cancel a job. The only way to stop a job that is already running.
     /// </summary>
     public async Task<bool> CancelJobAsync(Guid jobId)
     {
-        if (_jobs.TryGetValue(jobId, out var job) &&
-            job.Status is UpscaleJobStatus.Pending or UpscaleJobStatus.Running or UpscaleJobStatus.Paused)
+        if (!_jobs.TryGetValue(jobId, out var job) ||
+            job.Status is not (UpscaleJobStatus.Pending or UpscaleJobStatus.Running or UpscaleJobStatus.Paused))
         {
-            // Cancel the processing token if job is running
-            if (_jobCancellations.TryRemove(jobId, out var cts))
-            {
-                try
-                {
-                    await cts.CancelAsync();
-                    _logger.LogDebug("Cancellation token triggered for job {JobId}", jobId);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "Error cancelling job {JobId} token", jobId);
-                }
-                finally
-                {
-                    cts.Dispose();
-                }
-            }
-
-            job.Status = UpscaleJobStatus.Cancelled;
-            job.LastUpdatedAt = DateTime.UtcNow;
-            job.CompletedAt = DateTime.UtcNow;
-            await _repository.UpdateAsync(job);
-            OnStatusChanged(job);
-            _logger.LogInformation("Job {JobId} cancelled", jobId);
-            return true;
+            return false;
         }
-        return false;
+
+        // Signal the running process, if any. The processing task writes the terminal status itself.
+        if (_jobCancellations.TryRemove(jobId, out var cts))
+        {
+            try
+            {
+                await cts.CancelAsync();
+                logger.LogDebug("Cancellation token triggered for job {JobId}", jobId);
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Error cancelling job {JobId} token", jobId);
+            }
+            finally
+            {
+                cts.Dispose();
+            }
+        }
+
+        job.Status = UpscaleJobStatus.Cancelled;
+        job.LastUpdatedAt = DateTime.UtcNow;
+        job.CompletedAt = DateTime.UtcNow;
+        await repository.UpdateAsync(job);
+        OnStatusChanged(job);
+        logger.LogInformation("Job {JobId} cancelled", jobId);
+        return true;
     }
 
     /// <summary>
-    /// Pause a running job
+    /// Pause a Pending job so the consumer skips it when its turn comes.
+    /// A Running job cannot be paused - the external upscaler process has no pause - so this
+    /// returns false for anything that is not Pending. Use <see cref="CancelJobAsync"/> instead.
     /// </summary>
     public async Task<bool> PauseJobAsync(Guid jobId)
     {
-        if (_jobs.TryGetValue(jobId, out var job) && job.Status == UpscaleJobStatus.Running)
+        if (!_jobs.TryGetValue(jobId, out var job) || job.Status != UpscaleJobStatus.Pending)
         {
-            job.Status = UpscaleJobStatus.Paused;
-            job.LastUpdatedAt = DateTime.UtcNow;
-            await _repository.UpdateAsync(job);
-            OnStatusChanged(job);
-            _logger.LogInformation("Job {JobId} paused", jobId);
-            return true;
+            return false;
         }
-        return false;
+
+        job.Status = UpscaleJobStatus.Paused;
+        job.LastUpdatedAt = DateTime.UtcNow;
+        await repository.UpdateAsync(job);
+        OnStatusChanged(job);
+        logger.LogInformation("Job {JobId} paused", jobId);
+        return true;
     }
 
     /// <summary>
-    /// Resume a paused job
+    /// Return a paused job to Pending and re-queue it (its original work item was skipped).
     /// </summary>
     public async Task<bool> ResumeJobAsync(Guid jobId)
     {
-        if (_jobs.TryGetValue(jobId, out var job) && job.Status == UpscaleJobStatus.Paused)
+        if (!_jobs.TryGetValue(jobId, out var job) || job.Status != UpscaleJobStatus.Paused)
         {
-            job.Status = UpscaleJobStatus.Pending;
-            job.LastUpdatedAt = DateTime.UtcNow;
-            await _repository.UpdateAsync(job);
-            OnStatusChanged(job);
-            _logger.LogInformation("Job {JobId} resumed", jobId);
-            return true;
+            return false;
         }
-        return false;
+
+        job.Status = UpscaleJobStatus.Pending;
+        job.LastUpdatedAt = DateTime.UtcNow;
+        await repository.UpdateAsync(job);
+        await EnqueueAsync(jobId);
+        OnStatusChanged(job);
+        logger.LogInformation("Job {JobId} resumed", jobId);
+        return true;
     }
 
     /// <summary>
@@ -175,29 +162,27 @@ public class WorkerQueueService : BackgroundService, IUpscaleQueueService
     /// </summary>
     public async Task<bool> RetryJobAsync(Guid jobId)
     {
-        if (_jobs.TryGetValue(jobId, out var job) &&
-            job.Status is UpscaleJobStatus.Failed or UpscaleJobStatus.Cancelled)
+        if (!_jobs.TryGetValue(jobId, out var job) ||
+            job.Status is not (UpscaleJobStatus.Failed or UpscaleJobStatus.Cancelled))
         {
-            job.Status = UpscaleJobStatus.Pending;
-            job.ProgressPercentage = 0;
-            job.CurrentFrame = 0;
-            job.LastError = null;
-            job.ErrorStackTrace = null;
-            job.RetryCount++;
-            job.LastUpdatedAt = DateTime.UtcNow;
-            job.CompletedAt = null;
-
-            await _repository.UpdateAsync(job);
-
-            await _taskQueue.QueueBackgroundWorkItemAsync(async token =>
-            {
-                await ProcessJobAsync(job.JobId, token);
-            });
-
-            _logger.LogInformation("Job {JobId} queued for retry (attempt {RetryCount})", jobId, job.RetryCount);
-            return true;
+            return false;
         }
-        return false;
+
+        job.Status = UpscaleJobStatus.Pending;
+        job.ProgressPercentage = 0;
+        job.CurrentFrame = 0;
+        job.LastError = null;
+        job.ErrorStackTrace = null;
+        job.RetryCount++;
+        job.LastUpdatedAt = DateTime.UtcNow;
+        job.CompletedAt = null;
+
+        await repository.UpdateAsync(job);
+        await EnqueueAsync(jobId);
+        OnStatusChanged(job);
+
+        logger.LogInformation("Job {JobId} queued for retry (attempt {RetryCount})", jobId, job.RetryCount);
+        return true;
     }
 
     /// <summary>
@@ -205,13 +190,14 @@ public class WorkerQueueService : BackgroundService, IUpscaleQueueService
     /// </summary>
     public async Task<bool> DeleteJobAsync(Guid jobId)
     {
-        if (_jobs.TryRemove(jobId, out _))
+        if (!_jobs.TryRemove(jobId, out _))
         {
-            await _repository.DeleteAsync(jobId);
-            _logger.LogInformation("Job {JobId} deleted", jobId);
-            return true;
+            return false;
         }
-        return false;
+
+        await repository.DeleteAsync(jobId);
+        logger.LogInformation("Job {JobId} deleted", jobId);
+        return true;
     }
 
     /// <summary>
@@ -274,8 +260,8 @@ public class WorkerQueueService : BackgroundService, IUpscaleQueueService
         {
             _jobs.TryRemove(job.JobId, out _);
         }
-        var count = await _repository.DeleteByStatusAsync(UpscaleJobStatus.Completed);
-        _logger.LogInformation("Cleared {Count} completed jobs", count);
+        var count = await repository.DeleteByStatusAsync(UpscaleJobStatus.Completed);
+        logger.LogInformation("Cleared {Count} completed jobs", count);
         return count;
     }
 
@@ -287,7 +273,7 @@ public class WorkerQueueService : BackgroundService, IUpscaleQueueService
         var count = _jobs.Count;
         _jobs.Clear();
 
-        await _repository.DeleteByStatusAsync(
+        await repository.DeleteByStatusAsync(
             UpscaleJobStatus.Pending,
             UpscaleJobStatus.Running,
             UpscaleJobStatus.Paused,
@@ -295,9 +281,12 @@ public class WorkerQueueService : BackgroundService, IUpscaleQueueService
             UpscaleJobStatus.Failed,
             UpscaleJobStatus.Cancelled);
 
-        _logger.LogInformation("Cleared all {Count} jobs", count);
+        logger.LogInformation("Cleared all {Count} jobs", count);
         return count;
     }
+
+    private ValueTask EnqueueAsync(Guid jobId, CancellationToken cancellationToken = default) =>
+        taskQueue.QueueBackgroundWorkItemAsync(async token => await ProcessJobAsync(jobId, token), cancellationToken);
 
     private async Task InitializeAsync()
     {
@@ -305,32 +294,29 @@ public class WorkerQueueService : BackgroundService, IUpscaleQueueService
 
         try
         {
-            var jobs = await _repository.GetAllAsync();
+            var jobs = await repository.GetAllAsync();
             foreach (var job in jobs)
             {
                 _jobs[job.JobId] = job;
 
                 if (job.Status == UpscaleJobStatus.Pending)
                 {
-                    await _taskQueue.QueueBackgroundWorkItemAsync(async token =>
-                    {
-                        await ProcessJobAsync(job.JobId, token);
-                    });
+                    await EnqueueAsync(job.JobId);
                 }
                 else if (job.Status == UpscaleJobStatus.Running)
                 {
                     job.Status = UpscaleJobStatus.Failed;
                     job.LastError = "Job interrupted by service restart";
                     job.CompletedAt = DateTime.UtcNow;
-                    await _repository.UpdateAsync(job);
+                    await repository.UpdateAsync(job);
                 }
             }
 
-            _logger.LogInformation("Loaded {JobCount} jobs from database", jobs.Count());
+            logger.LogInformation("Loaded {JobCount} jobs from database", jobs.Count());
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error loading jobs from database");
+            logger.LogError(ex, "Error loading jobs from database");
         }
 
         _isInitialized = true;
@@ -338,18 +324,57 @@ public class WorkerQueueService : BackgroundService, IUpscaleQueueService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        _logger.LogInformation("WorkerQueueService starting...");
+        logger.LogInformation("UpscaleQueueService starting...");
 
         await InitializeAsync();
 
-        _logger.LogInformation("WorkerQueueService started (max concurrent: {MaxConcurrent})", _maxConcurrentJobs);
+        logger.LogInformation("UpscaleQueueService started (max concurrent: {MaxConcurrent})", maxConcurrentJobs);
 
         while (!stoppingToken.IsCancellationRequested)
         {
             try
             {
-                var workItem = await _taskQueue.DequeueAsync(stoppingToken);
-                await workItem(stoppingToken);
+                // Pause gate sits BEFORE the dequeue: a paused queue simply stops consuming
+                // instead of holding a dequeued job hostage.
+                while (_isQueuePaused && !stoppingToken.IsCancellationRequested)
+                {
+                    await Task.Delay(PausePollMilliseconds, stoppingToken);
+                }
+
+                // Take the slot before dequeuing, otherwise the loop would pull every work item
+                // and run them one at a time regardless of maxConcurrentJobs.
+                await _processingSemaphore.WaitAsync(stoppingToken);
+
+                Func<CancellationToken, ValueTask> workItem;
+                try
+                {
+                    workItem = await taskQueue.DequeueAsync(stoppingToken);
+                }
+                catch
+                {
+                    _processingSemaphore.Release();
+                    throw;
+                }
+
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        await workItem(stoppingToken);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        // Expected during shutdown
+                    }
+                    catch (Exception ex)
+                    {
+                        logger.LogError(ex, "Unhandled error in queue work item");
+                    }
+                    finally
+                    {
+                        _processingSemaphore.Release();
+                    }
+                }, CancellationToken.None);
             }
             catch (OperationCanceledException)
             {
@@ -357,35 +382,31 @@ public class WorkerQueueService : BackgroundService, IUpscaleQueueService
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error in queue processing");
+                logger.LogError(ex, "Error in queue processing");
             }
         }
 
-        _logger.LogInformation("WorkerQueueService stopped");
+        logger.LogInformation("UpscaleQueueService stopped");
     }
 
     private async Task ProcessJobAsync(Guid jobId, CancellationToken cancellationToken)
     {
         if (!_jobs.TryGetValue(jobId, out var job))
         {
-            _logger.LogWarning("Job {JobId} not found for processing", jobId);
+            logger.LogWarning("Job {JobId} not found for processing", jobId);
             return;
         }
 
-        // Wait if queue is paused
-        while (_isQueuePaused && !cancellationToken.IsCancellationRequested)
+        // Paused/cancelled while waiting in the channel: drop the work item.
+        // ResumeJobAsync re-queues a fresh one.
+        if (job.Status is UpscaleJobStatus.Paused or UpscaleJobStatus.Cancelled)
         {
-            await Task.Delay(500, cancellationToken);
-        }
-
-        if (job.Status == UpscaleJobStatus.Cancelled)
-        {
+            logger.LogDebug("Skipping job {JobId} in status {Status}", jobId, job.Status);
             return;
         }
 
-        await _processingSemaphore.WaitAsync(cancellationToken);
-
-        // Create a job-specific CancellationTokenSource linked to the service's stopping token
+        // Job-specific token, linked to the service's stopping token, so CancelJobAsync
+        // can kill this job without touching the rest of the queue.
         using var jobCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         _jobCancellations[jobId] = jobCts;
         var jobToken = jobCts.Token;
@@ -396,18 +417,18 @@ public class WorkerQueueService : BackgroundService, IUpscaleQueueService
             job.StartedAt = DateTime.UtcNow;
             job.ProcessId = Environment.ProcessId;
             job.MachineName = Environment.MachineName;
-            await _repository.UpdateAsync(job);
+            await repository.UpdateAsync(job);
             OnStatusChanged(job);
 
-            _logger.LogInformation("Processing job {JobId} ({UpscaleType})", jobId, job.UpscaleType);
+            logger.LogInformation("Processing job {JobId} ({UpscaleType})", jobId, job.UpscaleType);
 
             var progress = new Progress<double>(percentage =>
             {
                 job.ProgressPercentage = percentage;
                 job.LastUpdatedAt = DateTime.UtcNow;
 
-                // Calculate current frame from percentage if TotalFrames is known
-                if (job.TotalFrames.HasValue && job.TotalFrames > 0)
+                // Derive current frame from percentage when the source frame count is known
+                if (job.TotalFrames is > 0)
                 {
                     job.CurrentFrame = (int)(percentage / 100.0 * job.TotalFrames.Value);
                 }
@@ -416,38 +437,48 @@ public class WorkerQueueService : BackgroundService, IUpscaleQueueService
 
                 if (percentage % 10 < 1) // Log every ~10%
                 {
-                    _logger.LogDebug("Job {JobId} progress: {Progress:F1}%", jobId, percentage);
+                    logger.LogDebug("Job {JobId} progress: {Progress:F1}%", jobId, percentage);
                 }
             });
 
-            var success = await _processor.ProcessJobAsync(job, progress, jobToken);
+            var success = await processor.ProcessJobAsync(job, progress, jobToken);
 
-            if (success && job.Status == UpscaleJobStatus.Running)
+            // A started job always gets a terminal status written - no status guard here,
+            // that is what used to leave jobs stuck as Running forever.
+            if (jobToken.IsCancellationRequested)
+            {
+                job.Status = UpscaleJobStatus.Cancelled;
+                job.CompletedAt = DateTime.UtcNow;
+                await repository.UpdateAsync(job);
+                OnStatusChanged(job);
+                logger.LogInformation("Job {JobId} cancelled", jobId);
+            }
+            else if (success)
             {
                 job.Status = UpscaleJobStatus.Completed;
                 job.CompletedAt = DateTime.UtcNow;
                 job.ProgressPercentage = 100;
-                await _repository.UpdateAsync(job);
+                await repository.UpdateAsync(job);
                 OnStatusChanged(job);
-                _logger.LogInformation("Job {JobId} completed successfully", jobId);
+                logger.LogInformation("Job {JobId} completed successfully", jobId);
             }
-            else if (!success && job.Status == UpscaleJobStatus.Running)
+            else
             {
                 job.Status = UpscaleJobStatus.Failed;
                 job.LastError = "Processing failed";
                 job.CompletedAt = DateTime.UtcNow;
-                await _repository.UpdateAsync(job);
+                await repository.UpdateAsync(job);
                 OnStatusChanged(job);
-                _logger.LogWarning("Job {JobId} failed", jobId);
+                logger.LogWarning("Job {JobId} failed", jobId);
             }
         }
         catch (OperationCanceledException)
         {
             job.Status = UpscaleJobStatus.Cancelled;
             job.CompletedAt = DateTime.UtcNow;
-            await _repository.UpdateAsync(job);
+            await repository.UpdateAsync(job);
             OnStatusChanged(job);
-            _logger.LogInformation("Job {JobId} cancelled", jobId);
+            logger.LogInformation("Job {JobId} cancelled", jobId);
         }
         catch (Exception ex)
         {
@@ -455,31 +486,28 @@ public class WorkerQueueService : BackgroundService, IUpscaleQueueService
             job.LastError = ex.Message;
             job.ErrorStackTrace = ex.StackTrace;
             job.CompletedAt = DateTime.UtcNow;
-            await _repository.UpdateAsync(job);
+            await repository.UpdateAsync(job);
             OnStatusChanged(job);
-            _logger.LogError(ex, "Job {JobId} failed with error", jobId);
+            logger.LogError(ex, "Job {JobId} failed with error", jobId);
         }
         finally
         {
-            // Clean up the job cancellation token
             _jobCancellations.TryRemove(jobId, out _);
 
             job.ProcessId = null;
             job.LastUpdatedAt = DateTime.UtcNow;
-            _processingSemaphore.Release();
 
-            // Auto-pause queue if no pending jobs remain
-            await CheckAndAutoPauseQueueAsync();
+            CheckAndAutoPauseQueue();
         }
     }
 
     /// <summary>
     /// Automatically pause the queue if no pending or running jobs remain.
-    /// Opt-in via Worker:AutoPauseWhenIdle - off by default so a running queue stays running.
+    /// Opt-in per host - off by default so a running queue stays running.
     /// </summary>
-    private async Task CheckAndAutoPauseQueueAsync()
+    private void CheckAndAutoPauseQueue()
     {
-        if (!_autoPauseWhenIdle)
+        if (!autoPauseWhenIdle)
         {
             return;
         }
@@ -491,7 +519,7 @@ public class WorkerQueueService : BackgroundService, IUpscaleQueueService
         {
             _isQueuePaused = true;
             QueueStatusChanged?.Invoke(this, true);
-            _logger.LogInformation("Queue auto-paused - no pending jobs remaining");
+            logger.LogInformation("Queue auto-paused - no pending jobs remaining");
         }
     }
 

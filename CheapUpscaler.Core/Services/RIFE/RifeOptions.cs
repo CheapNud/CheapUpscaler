@@ -13,7 +13,9 @@ public enum RifeEngine
 }
 
 /// <summary>
-/// Scene change detection method
+/// Scene change detection method. Anything other than <see cref="SceneChangeDetection.Disabled"/> runs
+/// misc.SCDetect before RIFE, which makes RIFE repeat the source frame across a cut instead of
+/// interpolating between two unrelated shots (ghosting). Both enabled values currently behave the same.
 /// </summary>
 public enum SceneChangeDetection
 {
@@ -58,6 +60,9 @@ public class RifeOptions
 
     // === Performance Settings ===
 
+    /// <summary>
+    /// Maps to vsmlrt's RIFE ensemble flag (slower, slightly better quality)
+    /// </summary>
     public bool TtaMode { get; set; } = false;
 
     // === Scene Change Detection ===
@@ -69,6 +74,9 @@ public class RifeOptions
     // === Resolution Settings ===
 
     public int FrameHeight { get; set; } = 0;
+    /// <summary>
+    /// Only used by the standalone Practical-RIFE path (--uhd). vsmlrt's RIFE has no uhd parameter.
+    /// </summary>
     public bool UhdMode { get; set; } = false;
     public bool UhMode { get => UhdMode; set => UhdMode = value; }
 

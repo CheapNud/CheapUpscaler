@@ -1,4 +1,5 @@
 using SysProcess = System.Diagnostics.Process;
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Text.RegularExpressions;
 using CheapUpscaler.Core.Models;
@@ -15,6 +16,14 @@ namespace CheapUpscaler.Core.Services.RealESRGAN;
 /// </summary>
 public class RealEsrganService
 {
+    private const int NvidiaSmiTimeoutMs = 2000;
+
+    /// <summary>
+    /// Total VRAM (MiB) per GPU id, queried once. 0 = query failed / no NVIDIA GPU.
+    /// Static because the installed hardware cannot change while the process runs.
+    /// </summary>
+    private static readonly ConcurrentDictionary<int, int> VramTotalMiBCache = new();
+
     private readonly IVapourSynthEnvironment _environment;
     private readonly ILogger<RealEsrganService>? _logger;
 
@@ -186,9 +195,7 @@ public class RealEsrganService
         };
 
         // Tile size - new API expects [width, height]
-        var tileParam = options.TileMode
-            ? $"[{options.TileSize}, {options.TileSize}]"
-            : "None";
+        var tileParam = ResolveTileParam(options);
 
         // FP16 mode is now done via clip format (RGBH = FP16, RGBS = FP32)
         var clipFormat = options.UseFp16 ? "vs.RGBH" : "vs.RGBS";
@@ -271,6 +278,86 @@ except Exception as e:
 # Output the processed clip
 clip.set_output()
 ";
+    }
+
+    /// <summary>
+    /// Resolve the vsrealesrgan tile= parameter
+    /// TileMode off = None, TileSize > 0 = manual override, TileSize &lt;= 0 = auto-select from GPU VRAM
+    /// </summary>
+    private string ResolveTileParam(RealEsrganOptions options)
+    {
+        if (!options.TileMode)
+            return "None";
+
+        if (options.TileSize > 0)
+            return $"[{options.TileSize}, {options.TileSize}]";
+
+        var vramMiB = VramTotalMiBCache.GetOrAdd(options.GpuId, QueryTotalVramMiB);
+
+        // ponytail: static heuristic on TOTAL VRAM. Free VRAM would be more accurate but fluctuates,
+        // so it would have to be re-queried per job and could still be stale by the time the model loads.
+        // Total is stable and good enough for a one-shot pick.
+        // Upgrade path: adaptive retry-on-OOM, halving the tile size on each failed attempt.
+        var autoTileSize = vramMiB switch
+        {
+            >= 12000 => 0,   // no tiling, process full frames
+            >= 8000 => 512,
+            >= 6000 => 384,
+            >= 4000 => 256,
+            >= 2000 => 128,
+            _ => 64          // tiny VRAM, or query failed (vramMiB == 0)
+        };
+
+        _logger?.LogDebug("Auto tile size for GPU {GpuId}: {TileSize} (total VRAM: {VramMiB} MiB{Source})",
+            options.GpuId,
+            autoTileSize == 0 ? "None (full frame)" : $"{autoTileSize}px",
+            vramMiB,
+            vramMiB == 0 ? ", unknown - nvidia-smi unavailable" : "");
+
+        return autoTileSize == 0 ? "None" : $"[{autoTileSize}, {autoTileSize}]";
+    }
+
+    /// <summary>
+    /// Query total VRAM in MiB for a GPU via nvidia-smi. Returns 0 on any failure.
+    /// </summary>
+    private int QueryTotalVramMiB(int gpuId)
+    {
+        try
+        {
+            using var query = SysProcess.Start(new ProcessStartInfo
+            {
+                FileName = "nvidia-smi",
+                Arguments = $"--query-gpu=memory.total --format=csv,noheader,nounits -i {gpuId}",
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            });
+
+            if (query == null)
+                return 0;
+
+            // Output is a single short number, so waiting before reading cannot fill the pipe buffer
+            if (!query.WaitForExit(NvidiaSmiTimeoutMs))
+            {
+                try { query.Kill(); } catch { }
+                _logger?.LogDebug("nvidia-smi VRAM query timed out for GPU {GpuId}", gpuId);
+                return 0;
+            }
+
+            var output = query.StandardOutput.ReadToEnd().Trim();
+            if (query.ExitCode == 0 && int.TryParse(output, out var totalMiB))
+                return totalMiB;
+
+            _logger?.LogDebug("nvidia-smi VRAM query returned exit {ExitCode} for GPU {GpuId}: {Output}",
+                query.ExitCode, gpuId, output);
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug("nvidia-smi VRAM query failed for GPU {GpuId}: {Message}", gpuId, ex.Message);
+            return 0;
+        }
     }
 
     /// <summary>

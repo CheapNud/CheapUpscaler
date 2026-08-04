@@ -1,6 +1,7 @@
 using System.Text.Json;
 using CheapUpscaler.Shared.Data;
 using CheapUpscaler.Shared.Models;
+using CheapUpscaler.Shared.Services;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
@@ -11,7 +12,7 @@ namespace CheapUpscaler.Worker.Services;
 /// </summary>
 public class FileWatcherService : BackgroundService
 {
-    private readonly WorkerQueueService _queueService;
+    private readonly IUpscaleQueueService _queueService;
     private readonly IUpscaleJobRepository _repository;
     private readonly IConfiguration _configuration;
     private readonly ILogger<FileWatcherService> _logger;
@@ -26,7 +27,7 @@ public class FileWatcherService : BackgroundService
     ];
 
     public FileWatcherService(
-        WorkerQueueService queueService,
+        IUpscaleQueueService queueService,
         IUpscaleJobRepository repository,
         IConfiguration configuration,
         ILogger<FileWatcherService> logger)

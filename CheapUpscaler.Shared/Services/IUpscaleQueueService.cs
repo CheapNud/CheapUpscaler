@@ -1,6 +1,6 @@
 using CheapUpscaler.Shared.Models;
 
-namespace CheapUpscaler.Components.Services;
+namespace CheapUpscaler.Shared.Services;
 
 /// <summary>
 /// Service interface for managing the upscale job queue
@@ -22,13 +22,18 @@ public interface IUpscaleQueueService
     /// <summary>Start processing queued jobs</summary>
     void StartQueue();
 
-    /// <summary>Pause queue processing (current job continues)</summary>
+    /// <summary>Pause queue processing (already-running jobs continue)</summary>
     void StopQueue();
 
     // Job management
-    Task<Guid> AddJobAsync(UpscaleJob job);
+    Task<Guid> AddJobAsync(UpscaleJob job, CancellationToken cancellationToken = default);
+
+    /// <summary>Pause a Pending job so the consumer skips it. Running jobs cannot be paused - use Cancel.</summary>
     Task<bool> PauseJobAsync(Guid jobId);
+
+    /// <summary>Return a Paused job to Pending and re-queue it</summary>
     Task<bool> ResumeJobAsync(Guid jobId);
+
     Task<bool> CancelJobAsync(Guid jobId);
     Task<bool> RetryJobAsync(Guid jobId);
     Task<bool> DeleteJobAsync(Guid jobId);
