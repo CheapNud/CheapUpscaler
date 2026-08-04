@@ -1,6 +1,6 @@
 <!--
   TODO.md — CheapUpscaler project work tracker
-  Last updated: 2026-03-17
+  Last updated: 2026-08-04
 
   RULES FOR AI AGENTS:
   - Update the "Last updated" date above whenever you modify this file
@@ -32,19 +32,24 @@ _Nothing blocking._
 
 ## Planned
 
-- [ ] (2026-03-17) API key authentication middleware (CheapUpscaler.Shared) [plan]
-  - `X-Api-Key` header check, configured via env var (Worker) or settings (Desktop)
-  - `/health` excluded from auth, Blazor same-origin bypasses
-- [ ] (2026-03-17) Queue control REST API — expose pause/resume/throttle [plan]
-  - `POST /api/queue/pause`, `POST /api/queue/resume`, `GET /api/queue/status`, `PUT /api/queue/settings`
-  - Pause reason tracking for UI display
-- [ ] (2026-03-17) Tautulli integration — transcode-aware queue pausing [plan]
-  - Webhook: transcode start → pause, playback stop → resume
-- [ ] (2026-03-17) Helios-One GPU deployment — verify NVIDIA Container Toolkit + deploy [plan]
-  - `nvidia-ctk --version`, `docker run --gpus all nvidia/cuda:12.0-base nvidia-smi`
+- [ ] (2026-08-04) Removable drive workflow — process from/to a plugged-in USB stick or external SSD [user]
+  - One large job or a big batch of small ones; output lands back on the drive
+  - Overlaps with batch processing (Future) — likely built together
+- [ ] (2026-08-04) Fix invalid MudBlazor parameters flagged by MUD0002 [audit]
+  - FileBrowserDialog.razor: `OnDoubleClick` on MudListItem (likely non-functional), `Title` on MudIconButton
+  - DependencyManager.razor / UpscaleQueue.razor: `PanelClass` on MudTabs; FileUploadDialog.razor: `ChildContent` on MudFileUpload
 
 ## Future
 
+- [ ] (2026-08-04) Remote worker push — desktop client sends jobs to a Worker on another machine [user]
+  - Upload → enqueue → poll → download result; local vs remote is a per-job choice
+  - Same Worker binary regardless of host: Docker on Linux, native win-x64 service on Windows (no WSL2 — multi-GB file I/O)
+  - Lower priority: primary GPU is in the main workstation, so remote agents only pay off for long background jobs
+- [ ] (2026-08-04) API key authentication middleware — needed once a Worker is exposed on the LAN [plan]
+  - `X-Api-Key` header check, configured via env var (Worker) or settings (Desktop)
+  - `/health` excluded from auth, Blazor same-origin bypasses
+- [ ] (2026-08-04) Queue control REST API — pause/resume/throttle for remote workers [plan]
+  - `POST /api/queue/pause`, `POST /api/queue/resume`, `GET /api/queue/status`, `PUT /api/queue/settings`
 - [ ] (2026-03-17) Batch processing (multiple files) [plan]
 - [ ] (2026-03-17) Preset system (save/load processing configurations) [plan]
 - [ ] (2026-03-17) Processing pipeline builder (chain multiple operations) [plan]
@@ -58,6 +63,8 @@ _Nothing blocking._
 
 ## Done
 
+- [x] (2026-03-17 → 2026-08-04) Abandoned: Tautulli transcode-aware queue pausing — only made sense sharing a server GPU with Plex [plan]
+- [x] (2026-03-17 → 2026-08-04) Abandoned: dedicated server GPU deployment — container removed, server GPU is Plex-only now; Docker remains supported as a deployment model [plan]
 - [x] (pre-2026 → pre-2026) Core library — RIFE, Real-CUGAN, Real-ESRGAN, NonAI services [plan]
 - [x] (pre-2026 → pre-2026) Blazor UI — CheapAvaloniaBlazor desktop app with MudBlazor [plan]
 - [x] (pre-2026 → pre-2026) Dependency manager page — auto-detection of all tools [plan]
