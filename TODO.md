@@ -28,13 +28,13 @@
 
 ## Blocking
 
-- [ ] (2026-08-04) Queue deadlocks on startup when >100 pending jobs exist [audit]
+- [x] (2026-08-04 → 2026-08-04) Queue deadlocks on startup when >100 pending jobs exist [audit]
   - InitializeAsync enqueues into bounded Channel(100, FullMode.Wait) before the consumer loop starts; item 101 blocks forever, service silently never runs
   - Same bounded write with no CancellationToken can hang POST /api/jobs and the Blazor circuit after the row is committed
 - [x] (2026-08-04 → 2026-08-04) Headless Worker is uncontrollable without the Blazor UI [audit]
   - Paused boot is intentional (controllability) and stays; missing piece is queue REST endpoints (start/stop/status) so headless deployments can be driven remotely
   - CheckAndAutoPauseQueueAsync re-pauses after every drain — make auto-pause-when-idle an opt-in config flag, default false
-- [ ] (2026-08-04) Desktop Cancel doesn't cancel — UpscaleQueueService has no per-job CancellationTokenSource registry (Worker twin has one); ffmpeg/vspipe keep running after UI says Cancelled [audit]
+- [x] (2026-08-04 → 2026-08-04) Desktop Cancel doesn't cancel — UpscaleQueueService has no per-job CancellationTokenSource registry (Worker twin has one); ffmpeg/vspipe keep running after UI says Cancelled [audit]
 - [x] (2026-08-04 → 2026-08-04) Generated VapourSynth scripts break on real-world paths [audit]
   - Paths interpolated as r'{path}' in all three AI script generators: any apostrophe in a filename = Python syntax error
 - [x] (2026-08-04 → 2026-08-04) Hardcoded BT.709 color matrix corrupts SD and HDR content [audit]
@@ -42,17 +42,20 @@
 - [x] (2026-08-04 → 2026-08-04) Audio track lost on ALL AI-upscaled output (RIFE/RealCUGAN/RealESRGAN) [bug]
   - vspipe→ffmpeg pipelines never mux the source back in; add second input + `-map 0:v -map 1:a? -c:a copy`, same for subtitles
   - Also copy color metadata (range/primaries/trc) from source — currently lost
-- [ ] (2026-08-04) Pause doesn't pause — status flips to Paused but vspipe/ffmpeg keep running; completion handler then never updates a Paused job, stuck forever [bug]
+- [x] (2026-08-04 → 2026-08-04) Pause doesn't pause — status flips to Paused but vspipe/ffmpeg keep running; completion handler then never updates a Paused job, stuck forever [bug]
   - Resume equally broken (flips to Pending, nothing re-queues). Fix properly or remove the buttons
 - [x] (2026-08-04 → 2026-08-04) RealCUGAN cancellation never kills child processes — RIFE/ESRGAN register graceful shutdown, CUGAN doesn't [bug]
 
 ## Planned
 
-- [ ] (2026-08-04) Consolidate the duplicated queue engine into Shared [audit]
+- [ ] (2026-08-04) Consolidate remaining service twins: VideoInfoService/WorkerVideoInfoService (identical except ffmpeg path lookup) and the two DependencyChecker GetFFmpegVersion copies [audit]
+- [ ] (2026-08-04) Expose "Auto" tile size in the ESRGAN settings UI (engine supports TileSize<=0 since the VRAM ladder; dropdown lacks the option) [audit]
+- [ ] (2026-08-04) Decide UhdMode on SVP path: currently documented no-op; wiring it to vsmlrt scale=0.5 is the real 4K optimization but changes behavior [audit]
+- [x] (2026-08-04 → 2026-08-04) Consolidate the duplicated queue engine into Shared [audit]
   - WorkerQueueService (516 lines) and UpscaleQueueService (422) are ~90% identical and have already drifted (cancellation, auto-pause, forced 60fps); one class + a single IJobProcessor interface, hosts keep only their processor impl
   - Same treatment for VideoInfoService/WorkerVideoInfoService twins and the dependency-checker GetFFmpegVersion drift (Worker copy lost its timeout kill, leaks hung processes)
   - Move IUpscaleQueueService, ISettingsService, AppSettings out of the MudBlazor Components project into Shared
-- [ ] (2026-08-04) Job-settings DTOs defined three times with drifted defaults [audit]
+- [x] (2026-08-04 → 2026-08-04) Job-settings DTOs defined three times with drifted defaults [audit]
   - Nested classes in AddUpscaleJobDialog (consumed by services via using static), separate records in WorkerProcessorService: ESRGAN defaults differ (x4plus/512 vs x4plus-anime/0)
   - Move to Shared, wire both processors through UpscaleJob.GetSettings<T> (currently dead code); shared JsonSerializerOptions with PropertyNameCaseInsensitive
 - [x] (2026-08-04 → 2026-08-04) Adopt EF migrations — EnsureCreated freezes the schema [audit]
@@ -66,7 +69,7 @@
   - Client-supplied absolute OutputPath goes straight to ffmpeg (can overwrite the job DB); path allowlist uses raw StartsWith (/data/input-backup passes as /data/input)
   - SettingsJson stored verbatim, deserialized case-sensitively with silent fallback to defaults — wrong-cased fields run the wrong model and report success; validate at POST with 400
   - Remote push needs POST /api/files upload + token flow: CreateJob currently requires the input path to exist on the worker filesystem
-- [ ] (2026-08-04) Queue semantics: MaxConcurrentJobs does nothing and pause blocks the queue [audit]
+- [x] (2026-08-04 → 2026-08-04) Queue semantics: MaxConcurrentJobs does nothing and pause blocks the queue [audit]
   - Serial dequeue loop awaits each job so the semaphore never contends; pause spins inside the loop after dequeue, so one paused job jams everything behind it
 - [x] (2026-08-04 → 2026-08-04) Settings layer fixes [audit]
   - Settings page edits the live singleton by reference (every keystroke applies pre-Save); desktop SettingsService never loads at startup so ToolPaths overrides are always ignored (captive transient in singleton processor)
@@ -83,8 +86,8 @@
 - [ ] (2026-08-04) Dead-code sweep [audit]
   - IUpscaleService/IRifeService/RifePipelineOptions/InterpolateFramesAsync (zero callers), AutoStartQueue/PlayCompletionSound/MaxRetries/DarkMode/DefaultSettings section (never read), EstimatedTimeRemaining (never computed)
   - Consolidate RIFE's three parallel model tables; route RIFE through IVapourSynthEnvironment instead of its private duplicate detection; Real-CUGAN Linux crash (os.environ['APPDATA'] KeyError)
-- [ ] (2026-08-04) Scene-cut detection before RIFE interpolation — cheap frame-diff; above threshold duplicate frame instead of interpolating (prevents ghosting across cuts) [plan]
-- [ ] (2026-08-04) Auto tile size from queried VRAM budget instead of user-configured [plan]
+- [x] (2026-08-04 → 2026-08-04) Scene-cut detection before RIFE interpolation — cheap frame-diff; above threshold duplicate frame instead of interpolating (prevents ghosting across cuts) [plan]
+- [x] (2026-08-04 → 2026-08-04) Auto tile size from queried VRAM budget instead of user-configured [plan]
 - [ ] (2026-08-04) Removable drive workflow — process from/to a plugged-in USB stick or external SSD [user]
   - One large job or a big batch of small ones; output lands back on the drive
   - Overlaps with batch processing (Future) — likely built together

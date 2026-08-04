@@ -1,7 +1,7 @@
 using System.Diagnostics;
 using System.Text.Json;
-using CheapUpscaler.Components.Models;
-using CheapUpscaler.Components.Services;
+using CheapUpscaler.Shared.Models;
+using CheapUpscaler.Shared.Services;
 
 namespace CheapUpscaler.Blazor.Services;
 

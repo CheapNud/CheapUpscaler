@@ -9,6 +9,7 @@ using CheapUpscaler.Core.Services.RIFE;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using MudBlazor;
 
 namespace CheapUpscaler.Blazor;
@@ -44,7 +45,7 @@ class Program
         builder.Services.AddSingleton<DependencyChecker>();
         builder.Services.AddSingleton<IDependencyChecker>(sp => sp.GetRequiredService<DependencyChecker>());
         builder.Services.AddSingleton<ISettingsService, SettingsService>();
-        builder.Services.AddSingleton<IUpscaleProcessorService, UpscaleProcessorService>();
+        builder.Services.AddSingleton<IUpscaleProcessor, UpscaleProcessorService>();
         builder.Services.AddSingleton<IVideoInfoService, VideoInfoService>();
 
         // Register platform-specific services for Components
@@ -66,7 +67,13 @@ class Program
 
         // Register queue infrastructure
         builder.Services.AddSingleton<IBackgroundTaskQueue, BackgroundTaskQueue>();
-        builder.Services.AddSingleton<UpscaleQueueService>();
+        builder.Services.AddSingleton(sp => new UpscaleQueueService(
+            sp.GetRequiredService<ISettingsService>().Settings.Queue.MaxConcurrentJobs,
+            autoPauseWhenIdle: false,
+            sp.GetRequiredService<IUpscaleProcessor>(),
+            sp.GetRequiredService<IUpscaleJobRepository>(),
+            sp.GetRequiredService<IBackgroundTaskQueue>(),
+            sp.GetRequiredService<ILogger<UpscaleQueueService>>()));
         builder.Services.AddSingleton<IUpscaleQueueService>(sp => sp.GetRequiredService<UpscaleQueueService>());
         builder.Services.AddHostedService(sp => sp.GetRequiredService<UpscaleQueueService>());
 

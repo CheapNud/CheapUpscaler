@@ -1,6 +1,6 @@
 using System.Text.Json;
 
-namespace CheapUpscaler.Components.Models;
+namespace CheapUpscaler.Shared.Models;
 
 /// <summary>
 /// Application settings for CheapUpscaler

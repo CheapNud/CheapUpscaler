@@ -1,15 +1,15 @@
 using CheapUpscaler.Shared.Models;
 
-namespace CheapUpscaler.Blazor.Services;
+namespace CheapUpscaler.Shared.Services;
 
 /// <summary>
-/// Orchestrates video upscaling using CheapUpscaler.Core services
-/// Maps job settings to Core service options and handles processing
+/// Executes an upscale job with the appropriate Core service.
+/// Implemented per host (desktop uses AppSettings tool paths, worker uses IToolLocator).
 /// </summary>
-public interface IUpscaleProcessorService
+public interface IUpscaleProcessor
 {
     /// <summary>
-    /// Process an upscale job using the appropriate Core service
+    /// Process an upscale job
     /// </summary>
     /// <param name="job">The upscale job to process</param>
     /// <param name="progress">Progress reporter (0-100 percentage)</param>

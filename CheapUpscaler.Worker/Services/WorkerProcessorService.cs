@@ -6,6 +6,7 @@ using CheapUpscaler.Core.Services.RealESRGAN;
 using CheapUpscaler.Core.Services.Upscaling;
 using CheapUpscaler.Shared.Models;
 using CheapUpscaler.Shared.Platform;
+using CheapUpscaler.Shared.Services;
 using Microsoft.Extensions.Logging;
 
 namespace CheapUpscaler.Worker.Services;
@@ -21,7 +22,7 @@ public class WorkerProcessorService(
     NonAiUpscalingService nonAiService,
     IToolLocator toolLocator,
     IConfiguration configuration,
-    ILogger<WorkerProcessorService> logger) : IWorkerProcessorService
+    ILogger<WorkerProcessorService> logger) : IUpscaleProcessor
 {
     public async Task<bool> ProcessJobAsync(
         UpscaleJob job,
@@ -76,7 +77,7 @@ public class WorkerProcessorService(
         var options = new RifeOptions
         {
             InterpolationMultiplier = jobSettings.Multiplier,
-            TargetFps = jobSettings.TargetFps.HasValue ? (int)jobSettings.TargetFps.Value : 60,
+            TargetFps = jobSettings.TargetFps,
             Engine = selectedEngine,
             GpuId = 0,
             ModelName = modelName
@@ -204,34 +205,4 @@ public class WorkerProcessorService(
             return new T();
         }
     }
-}
-
-// Job settings DTOs (simplified for Worker - could be moved to Shared if needed)
-public record RifeJobSettings
-{
-    public int Multiplier { get; init; } = 2;
-    public double? TargetFps { get; init; }
-    public string QualityPreset { get; init; } = "Medium";
-}
-
-public record RealCuganJobSettings
-{
-    public int NoiseLevel { get; init; } = -1;
-    public int Scale { get; init; } = 2;
-    public bool UseFp16 { get; init; } = true;
-}
-
-public record RealEsrganJobSettings
-{
-    public string Model { get; init; } = "realesrgan-x4plus-anime";
-    public int Scale { get; init; } = 4;
-    public int TileSize { get; init; } = 0;
-    public bool UseFp16 { get; init; } = true;
-    public bool UseTensorRT { get; init; } = false;
-}
-
-public record NonAiJobSettings
-{
-    public string Algorithm { get; init; } = "lanczos";
-    public int Scale { get; init; } = 2;
 }

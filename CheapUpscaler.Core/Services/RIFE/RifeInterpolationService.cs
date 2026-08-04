@@ -842,7 +842,9 @@ public class RifeInterpolationService
     }
 
     /// <summary>
-    /// Generate a VapourSynth script for SVP RIFE processing
+    /// Generate a VapourSynth script for SVP RIFE processing.
+    /// When scene detection is enabled, misc.SCDetect tags cuts on the source clip so vsmlrt's RIFE
+    /// repeats the frame across a cut instead of interpolating between two unrelated shots.
     /// </summary>
     private string GenerateSvpRifeScript(string inputVideoPath, RifeOptions options)
     {
@@ -917,8 +919,21 @@ public class RifeInterpolationService
         };
 
         var gpuThreads = options.GpuThreads;
-        var sceneDetect = options.SceneDetection == SceneChangeDetection.Disabled ? "None" : "True";
         var targetHeight = options.FrameHeight;
+
+        // vsmlrt's RIFE has no scene-change parameter. It looks for the _SceneChangeNext frame
+        // prop and, when set, repeats the source frame instead of interpolating (akarin.Select,
+        // or std.FrameEval as fallback). That prop has to be produced up-front by misc.SCDetect.
+        // 0.1 is the MiscFilters default and the value vs-mlrt's own docs use.
+        const string SceneChangeThreshold = "0.1";
+        var sceneDetectSnippet = options.SceneDetection == SceneChangeDetection.Disabled
+            ? ""
+            : $@"
+try:
+    clip = core.misc.SCDetect(clip, threshold={SceneChangeThreshold})
+except Exception as e:
+    print(f'[RIFE] Scene change detection unavailable ({{e}}). Interpolation will ghost across cuts - install the VapourSynth MiscFilters plugin (misc.SCDetect).', file=sys.stderr)
+";
 
         return $@"
 import vapoursynth as vs
@@ -978,7 +993,7 @@ if target_height > 0 and target_height != height:
     clip = core.resize.Bicubic(clip, width=target_width, height=target_height)
     width = target_width
     height = target_height
-{VspipePipeline.MatrixDetectSnippet}
+{VspipePipeline.MatrixDetectSnippet}{sceneDetectSnippet}
 clip = core.resize.Bicubic(clip, format=vs.RGBS, matrix_in=_matrix)
 
 def pad_to_multiple(dimension, multiple=32):
@@ -1001,7 +1016,10 @@ try:
 
     # Use integer model ID - vsmlrt only accepts integers, not string paths
     # Model IDs: base versions are 3-digit (e.g., 416), lite versions append 1 (e.g., 4161)
-    clip = RIFE(clip, {multiplier}, 1.0, None, None, None, {modelId}, backend, {(options.TtaMode ? "True" : "False")}, {(options.UhdMode ? "True" : "False")}, {sceneDetect})
+    # Keyword args only: vsmlrt.RIFE's positional order is
+    # (clip, multi, scale, tiles, tilesize, overlap, model, backend, ensemble, video_player, _implementation)
+    # - it has no uhd or scene-detect parameter (scene changes come from the _SceneChangeNext prop above).
+    clip = RIFE(clip, multi={multiplier}, scale=1.0, model={modelId}, backend=backend, ensemble={(options.TtaMode ? "True" : "False")})
 
 except Exception as e:
     import traceback

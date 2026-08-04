@@ -1,6 +1,6 @@
-using CheapUpscaler.Components.Models;
+using CheapUpscaler.Shared.Models;
 
-namespace CheapUpscaler.Components.Services;
+namespace CheapUpscaler.Shared.Services;
 
 /// <summary>
 /// Interface for settings service

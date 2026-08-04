@@ -68,10 +68,16 @@ builder.Services.AddSingleton<IUpscaleJobRepository, UpscaleJobRepository>();
 builder.Services.AddSingleton<IBackgroundTaskQueue, BackgroundTaskQueue>();
 
 // Worker services
-builder.Services.AddSingleton<IWorkerProcessorService, WorkerProcessorService>();
-builder.Services.AddSingleton<WorkerQueueService>();
-builder.Services.AddSingleton<IUpscaleQueueService>(sp => sp.GetRequiredService<WorkerQueueService>());
-builder.Services.AddHostedService(sp => sp.GetRequiredService<WorkerQueueService>());
+builder.Services.AddSingleton<IUpscaleProcessor, WorkerProcessorService>();
+builder.Services.AddSingleton(sp => new UpscaleQueueService(
+    builder.Configuration.GetValue("Worker:MaxConcurrentJobs", 1),
+    builder.Configuration.GetValue("Worker:AutoPauseWhenIdle", false),
+    sp.GetRequiredService<IUpscaleProcessor>(),
+    sp.GetRequiredService<IUpscaleJobRepository>(),
+    sp.GetRequiredService<IBackgroundTaskQueue>(),
+    sp.GetRequiredService<ILogger<UpscaleQueueService>>()));
+builder.Services.AddSingleton<IUpscaleQueueService>(sp => sp.GetRequiredService<UpscaleQueueService>());
+builder.Services.AddHostedService(sp => sp.GetRequiredService<UpscaleQueueService>());
 
 // Component services (Settings, VideoInfo, DependencyChecker, Hardware)
 builder.Services.AddSingleton<ISettingsService, WorkerSettingsService>();

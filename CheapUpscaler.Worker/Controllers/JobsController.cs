@@ -1,9 +1,8 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using CheapUpscaler.Components.Services;
 using CheapUpscaler.Core.Models;
 using CheapUpscaler.Shared.Models;
-using CheapUpscaler.Worker.Services;
+using CheapUpscaler.Shared.Services;
 using Microsoft.AspNetCore.Mvc;
 
 namespace CheapUpscaler.Worker.Controllers;

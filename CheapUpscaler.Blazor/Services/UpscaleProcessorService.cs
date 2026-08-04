@@ -1,13 +1,12 @@
 using System.Diagnostics;
 using System.Text.Json;
-using CheapUpscaler.Components.Services;
 using CheapUpscaler.Shared.Models;
+using CheapUpscaler.Shared.Services;
 using CheapUpscaler.Core.Models;
 using CheapUpscaler.Core.Services.RIFE;
 using CheapUpscaler.Core.Services.RealCUGAN;
 using CheapUpscaler.Core.Services.RealESRGAN;
 using CheapUpscaler.Core.Services.Upscaling;
-using static CheapUpscaler.Components.Shared.AddUpscaleJobDialog;
 
 namespace CheapUpscaler.Blazor.Services;
 
@@ -19,7 +18,7 @@ public class UpscaleProcessorService(
     RealCuganService realCuganService,
     RealEsrganService realEsrganService,
     NonAiUpscalingService nonAiService,
-    ISettingsService settingsService) : IUpscaleProcessorService
+    ISettingsService settingsService) : IUpscaleProcessor
 {
     public async Task<bool> ProcessJobAsync(
         UpscaleJob job,
