@@ -1,4 +1,5 @@
 using SysProcess = System.Diagnostics.Process;
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
@@ -33,19 +34,65 @@ if _matrix in (0, 2, 3):
     _matrix = 1 if clip.height >= 720 else 5
 ";
 
+    private static readonly ConcurrentDictionary<string, bool> NvencAvailabilityCache = new();
+
+    /// <summary>
+    /// Probe an FFmpeg build for the h264_nvenc encoder. Cached per ffmpeg path -
+    /// installed encoders can't change while the process runs.
+    /// </summary>
+    public static bool IsNvencAvailable(string ffmpegPath) =>
+        NvencAvailabilityCache.GetOrAdd(ffmpegPath, static probePath =>
+        {
+            try
+            {
+                using var probe = SysProcess.Start(new ProcessStartInfo
+                {
+                    FileName = probePath,
+                    Arguments = "-hide_banner -encoders",
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                });
+
+                if (probe == null)
+                    return false;
+
+                var encoderList = probe.StandardOutput.ReadToEnd();
+                if (!probe.WaitForExit(3000))
+                {
+                    try { probe.Kill(); } catch { }
+                    return false;
+                }
+
+                return probe.ExitCode == 0 && encoderList.Contains(" h264_nvenc ");
+            }
+            catch
+            {
+                return false;
+            }
+        });
+
     /// <summary>
     /// Build FFmpeg arguments that encode the piped y4m video AND mux audio
     /// (and subtitles, for mkv output) back in from the original source file.
+    /// Uses NVENC hardware encoding when the FFmpeg build supports it, libx264 otherwise.
     /// </summary>
-    public static string BuildEncodeArguments(string sourceVideoPath, string outputVideoPath, string preset = "slow")
+    public static string BuildEncodeArguments(string sourceVideoPath, string outputVideoPath, string preset = "slow", string? ffmpegPath = null)
     {
         // Subtitle copy is only reliable for mkv containers; mp4 would need mov_text conversion
         var subtitleArgs = Path.GetExtension(outputVideoPath).Equals(".mkv", StringComparison.OrdinalIgnoreCase)
             ? "-map 1:s? -c:s copy "
             : "";
 
+        // ponytail: NVENC auto-selected when available (p5/cq19 ~ libx264 crf18 quality);
+        // per-job encoder settings + raw key=value passthrough are the upgrade path
+        var videoArgs = IsNvencAvailable(ResolveFfmpegPath(ffmpegPath))
+            ? "-c:v h264_nvenc -preset p5 -cq 19"
+            : $"-c:v libx264 -preset {preset} -crf 18";
+
         return $"-i - -i \"{sourceVideoPath}\" -map 0:v:0 -map 1:a? -c:a copy {subtitleArgs}" +
-               $"-map_metadata 1 -c:v libx264 -preset {preset} -crf 18 -pix_fmt yuv420p -y \"{outputVideoPath}\"";
+               $"-map_metadata 1 {videoArgs} -pix_fmt yuv420p -y \"{outputVideoPath}\"";
     }
 
     /// <summary>

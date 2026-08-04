@@ -1,15 +1,19 @@
-using CheapUpscaler.Components.Models;
-using CheapUpscaler.Components.Services;
+using CheapUpscaler.Shared.Models;
 using FFMpegCore;
 using Microsoft.Extensions.Logging;
 
-namespace CheapUpscaler.Worker.Services;
+namespace CheapUpscaler.Shared.Services;
 
 /// <summary>
 /// Extracts video metadata using FFprobe via FFMpegCore.
-/// Optimized for Docker/headless environments where FFmpeg is in PATH.
 /// </summary>
-public class WorkerVideoInfoService(ILogger<WorkerVideoInfoService> logger) : IVideoInfoService
+/// <param name="logger">Host logger</param>
+/// <param name="resolveFFmpegPath">
+/// Optional host-specific ffmpeg resolution (the desktop host uses SVP/executable detection).
+/// When it yields nothing, <see cref="ToolProbe.FindFFmpeg"/> checks the well-known install
+/// locations, and failing that FFMpegCore falls back to whatever is on PATH.
+/// </param>
+public class VideoInfoService(ILogger<VideoInfoService> logger, Func<string?>? resolveFFmpegPath = null) : IVideoInfoService
 {
     private bool _isConfigured;
 
@@ -111,72 +115,19 @@ public class WorkerVideoInfoService(ILogger<WorkerVideoInfoService> logger) : IV
     private void ConfigureFFmpeg()
     {
         if (_isConfigured) return;
+        _isConfigured = true;
 
-        // In Docker, ffmpeg is typically in PATH (/usr/bin/ffmpeg)
-        // Try common locations first
-        var ffmpegPath = FindFFmpegPath();
-        if (!string.IsNullOrEmpty(ffmpegPath))
+        var ffmpegPath = resolveFFmpegPath?.Invoke() ?? ToolProbe.FindFFmpeg();
+        var directory = string.IsNullOrEmpty(ffmpegPath) ? null : Path.GetDirectoryName(ffmpegPath);
+
+        if (!string.IsNullOrEmpty(directory))
         {
-            var directory = Path.GetDirectoryName(ffmpegPath);
-            if (!string.IsNullOrEmpty(directory))
-            {
-                GlobalFFOptions.Configure(options =>
-                {
-                    options.BinaryFolder = directory;
-                });
-                logger.LogInformation("FFMpegCore configured with path: {Directory}", directory);
-            }
+            GlobalFFOptions.Configure(options => options.BinaryFolder = directory);
+            logger.LogInformation("FFMpegCore configured with path: {Directory}", directory);
         }
         else
         {
-            // Assume ffmpeg is in PATH (typical for Docker)
-            logger.LogInformation("FFmpeg not found in custom paths, assuming it's in PATH");
+            logger.LogInformation("FFmpeg not found in known locations, assuming it is on PATH");
         }
-
-        _isConfigured = true;
-    }
-
-    private static string? FindFFmpegPath()
-    {
-        // Check common Linux locations (for Docker)
-        if (!OperatingSystem.IsWindows())
-        {
-            var linuxPaths = new[]
-            {
-                "/usr/bin/ffmpeg",
-                "/usr/local/bin/ffmpeg"
-            };
-
-            foreach (var path in linuxPaths)
-            {
-                if (File.Exists(path))
-                {
-                    return path;
-                }
-            }
-        }
-
-        // Check common Windows locations
-        if (OperatingSystem.IsWindows())
-        {
-            var windowsPaths = new[]
-            {
-                @"C:\ffmpeg\bin\ffmpeg.exe",
-                @"C:\Program Files\ffmpeg\bin\ffmpeg.exe",
-                @"C:\Program Files (x86)\ffmpeg\bin\ffmpeg.exe",
-                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ffmpeg", "bin", "ffmpeg.exe")
-            };
-
-            foreach (var path in windowsPaths)
-            {
-                if (File.Exists(path))
-                {
-                    return path;
-                }
-            }
-        }
-
-        // Fallback: assume it's in PATH (FFMpegCore will handle this)
-        return null;
     }
 }

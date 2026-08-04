@@ -437,6 +437,11 @@ public class UpscaleQueueService(
                     job.CurrentFrame = (int)(percentage / 100.0 * job.TotalFrames.Value);
                 }
 
+                // Linear extrapolation from elapsed time. Below 1% the estimate is noise, so show nothing.
+                job.EstimatedTimeRemaining = percentage >= 1 && percentage < 100 && job.StartedAt.HasValue
+                    ? (DateTime.UtcNow - job.StartedAt.Value) / percentage * (100 - percentage)
+                    : null;
+
                 OnProgressChanged(job);
 
                 if (percentage % 10 < 1) // Log every ~10%
@@ -462,6 +467,7 @@ public class UpscaleQueueService(
                 job.Status = UpscaleJobStatus.Completed;
                 job.CompletedAt = DateTime.UtcNow;
                 job.ProgressPercentage = 100;
+                job.EstimatedTimeRemaining = null;
                 await repository.UpdateAsync(job);
                 OnStatusChanged(job);
                 logger.LogInformation("Job {JobId} completed successfully", jobId);

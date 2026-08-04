@@ -1,6 +1,6 @@
-using CheapUpscaler.Components.Models;
+using CheapUpscaler.Shared.Models;
 
-namespace CheapUpscaler.Components.Services;
+namespace CheapUpscaler.Shared.Services;
 
 /// <summary>
 /// Service for extracting video file metadata

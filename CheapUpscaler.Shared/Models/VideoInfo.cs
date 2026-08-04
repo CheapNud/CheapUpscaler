@@ -1,4 +1,4 @@
-namespace CheapUpscaler.Components.Models;
+namespace CheapUpscaler.Shared.Models;
 
 /// <summary>
 /// Video file metadata for display in the UI

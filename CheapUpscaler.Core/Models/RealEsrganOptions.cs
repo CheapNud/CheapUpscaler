@@ -124,11 +124,11 @@ public class RealEsrganOptions
     }
 
     /// <summary>
-    /// Get available tile sizes
+    /// Get available tile sizes. 0 = auto (picked from GPU VRAM at render time).
     /// </summary>
     public static int[] GetAvailableTileSizes()
     {
-        return [128, 256, 384, 512, 768, 1024];
+        return [0, 128, 256, 384, 512, 768, 1024];
     }
 
     /// <summary>

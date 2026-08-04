@@ -251,6 +251,16 @@
                             File.Exists(_sourcePath) &&
                             _videoInfo != null;
 
+    protected override void OnInitialized()
+    {
+        // Copy (not reference) the stored defaults - the settings panels edit these in place
+        var defaults = SettingsService.Settings.DefaultSettings;
+        _rifeSettings = defaults.Rife with { };
+        _realCuganSettings = defaults.RealCugan with { };
+        _realEsrganSettings = defaults.RealEsrgan with { };
+        _nonAiSettings = defaults.NonAi with { };
+    }
+
     private void OnUpscaleTypeChanged(UpscaleType type)
     {
         _selectedType = type;
