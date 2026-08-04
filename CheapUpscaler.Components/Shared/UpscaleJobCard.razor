@@ -78,13 +78,19 @@
                     }
                     else if (Job.Status == UpscaleJobStatus.Completed)
                     {
-                        <MudTooltip Text="Download Output">
-                            <MudIconButton Icon="@Icons.Material.Filled.Download"
-                                           Color="Color.Success"
-                                           Size="Size.Small"
-                                           OnClick="@DownloadOutput" />
-                        </MudTooltip>
-                        @if (SystemService.SupportsExplorerIntegration)
+                        @if (!SystemService.SupportsExplorerIntegration)
+                        {
+                            @* Download goes through the Worker's /api/jobs/{id}/download endpoint,
+                               which only exists when hosted as a server - on desktop the local
+                               "Open Output Folder" button below covers it instead. *@
+                            <MudTooltip Text="Download Output">
+                                <MudIconButton Icon="@Icons.Material.Filled.Download"
+                                               Color="Color.Success"
+                                               Size="Size.Small"
+                                               OnClick="@DownloadOutput" />
+                            </MudTooltip>
+                        }
+                        else
                         {
                             <MudTooltip Text="Open Output Folder">
                                 <MudIconButton Icon="@Icons.Material.Filled.FolderOpen"

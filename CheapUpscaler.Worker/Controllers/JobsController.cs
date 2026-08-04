@@ -1,3 +1,7 @@
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using CheapUpscaler.Components.Services;
+using CheapUpscaler.Core.Models;
 using CheapUpscaler.Shared.Models;
 using CheapUpscaler.Worker.Services;
 using Microsoft.AspNetCore.Mvc;
@@ -9,8 +13,16 @@ namespace CheapUpscaler.Worker.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/[controller]")]
-public class JobsController(WorkerQueueService queueService, IConfiguration configuration, ILogger<JobsController> logger) : ControllerBase
+public class JobsController(IUpscaleQueueService queueService, IConfiguration configuration, ILogger<JobsController> logger) : ControllerBase
 {
+    private const string DefaultOutputDirectory = "/data/output";
+
+    private static readonly JsonSerializerOptions SettingsJsonOptions = new()
+    {
+        PropertyNameCaseInsensitive = true,
+        UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow
+    };
+
     /// <summary>
     /// Submit a new upscale job
     /// </summary>
@@ -29,13 +41,15 @@ public class JobsController(WorkerQueueService queueService, IConfiguration conf
             return BadRequest(new { Error = $"Input file not found: {request.InputPath}" });
         }
 
-        var outputPath = request.OutputPath;
-        if (string.IsNullOrWhiteSpace(outputPath))
+        if (!ValidateSettings(request.UpscaleType, request.SettingsJson, out var settingsJson, out var settingsError))
         {
-            var outputDir = configuration["Worker:OutputPath"] ?? "/data/output";
-            var inputName = Path.GetFileNameWithoutExtension(request.InputPath);
-            outputPath = Path.Combine(outputDir, $"{inputName}_upscaled.mp4");
+            return BadRequest(new { Error = settingsError });
         }
+
+        // Never trust a client-supplied absolute path: the directory is always ours,
+        // only the (sanitized) filename component of the request is honoured.
+        var outputDir = Path.GetFullPath(configuration["Worker:OutputPath"] ?? DefaultOutputDirectory);
+        var outputPath = Path.Combine(outputDir, BuildOutputFileName(request));
 
         var job = new UpscaleJob
         {
@@ -44,7 +58,7 @@ public class JobsController(WorkerQueueService queueService, IConfiguration conf
             SourceVideoPath = request.InputPath,
             OutputPath = outputPath,
             UpscaleType = request.UpscaleType,
-            SettingsJson = request.SettingsJson ?? "{}",
+            SettingsJson = settingsJson,
             CreatedAt = DateTime.UtcNow
         };
 
@@ -214,6 +228,101 @@ public class JobsController(WorkerQueueService queueService, IConfiguration conf
     {
         var stats = await queueService.GetQueueStatisticsAsync();
         return Ok(stats);
+    }
+
+    /// <summary>
+    /// Builds the output file name from the input name plus an upscale-type suffix.
+    /// A client-supplied OutputPath contributes only its sanitized file name.
+    /// </summary>
+    private static string BuildOutputFileName(CreateJobRequest request)
+    {
+        var requested = string.IsNullOrWhiteSpace(request.OutputPath)
+            ? null
+            : SanitizeFileName(Path.GetFileName(request.OutputPath));
+
+        if (!string.IsNullOrEmpty(requested))
+        {
+            return requested;
+        }
+
+        var inputName = SanitizeFileName(Path.GetFileNameWithoutExtension(request.InputPath));
+        if (string.IsNullOrEmpty(inputName))
+        {
+            inputName = "job";
+        }
+
+        return $"{inputName}_{request.UpscaleType.ToString().ToLowerInvariant()}.mp4";
+    }
+
+    private static string SanitizeFileName(string fileName)
+    {
+        // Strip any path component the client tried to smuggle in, then invalid chars.
+        fileName = fileName.Replace('/', '_').Replace('\\', '_');
+        fileName = Path.GetFileName(fileName);
+
+        foreach (var invalid in Path.GetInvalidFileNameChars())
+        {
+            fileName = fileName.Replace(invalid, '_');
+        }
+
+        return fileName.Replace("..", "_").Trim();
+    }
+
+    /// <summary>
+    /// Deserializes SettingsJson into the record matching the requested upscale type so
+    /// malformed or unknown settings fail at POST time instead of mid-processing.
+    /// </summary>
+    private static bool ValidateSettings(UpscaleType upscaleType, string? json, out string settingsJson, out string? error)
+    {
+        settingsJson = "{}";
+        error = null;
+
+        if (string.IsNullOrWhiteSpace(json) || json.Trim() == "{}")
+        {
+            return true;
+        }
+
+        try
+        {
+            switch (upscaleType)
+            {
+                case UpscaleType.Rife:
+                    settingsJson = Normalize(JsonSerializer.Deserialize<RifeJobSettings>(json, SettingsJsonOptions));
+                    break;
+
+                case UpscaleType.RealCugan:
+                    var cugan = JsonSerializer.Deserialize<RealCuganJobSettings>(json, SettingsJsonOptions) ?? new RealCuganJobSettings();
+                    var cuganOptions = new RealCuganOptions { Noise = cugan.NoiseLevel, Scale = cugan.Scale };
+                    if (!cuganOptions.IsNoiseScaleCompatible())
+                    {
+                        error = $"Noise level {cugan.NoiseLevel} is not compatible with scale {cugan.Scale}x (levels 1 and 2 require scale 2).";
+                        return false;
+                    }
+                    settingsJson = Normalize(cugan);
+                    break;
+
+                case UpscaleType.RealEsrgan:
+                    settingsJson = Normalize(JsonSerializer.Deserialize<RealEsrganJobSettings>(json, SettingsJsonOptions));
+                    break;
+
+                case UpscaleType.NonAi:
+                    settingsJson = Normalize(JsonSerializer.Deserialize<NonAiJobSettings>(json, SettingsJsonOptions));
+                    break;
+
+                default:
+                    error = $"Unsupported upscale type: {upscaleType}";
+                    return false;
+            }
+        }
+        catch (JsonException ex)
+        {
+            error = $"Invalid SettingsJson for {upscaleType}: {ex.Message}";
+            return false;
+        }
+
+        return true;
+
+        static string Normalize<T>(T? settings) => settings == null ? "{}" : JsonSerializer.Serialize(settings);
     }
 
     private static JobStatusResponse MapToResponse(UpscaleJob job) => new()

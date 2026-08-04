@@ -1,4 +1,5 @@
 @page "/upscale-queue"
+@using System.Diagnostics
 @inject IUpscaleQueueService QueueService
 @inject IDialogService DialogService
 @inject ISnackbar Snackbar
@@ -88,7 +89,7 @@
 }
 else
 {
-    <MudTabs Elevation="2" Rounded="true" ApplyEffectsToContainer="true" PanelClass="pa-4">
+    <MudTabs Elevation="2" Rounded="true" ApplyEffectsToContainer="true" TabPanelsClass="pa-4">
         <MudTabPanel Text="Active"
                      Icon="@Icons.Material.Filled.PlayArrow"
                      BadgeData="@(_activeJobs.Count > 0 ? _activeJobs.Count : null)"
@@ -276,58 +277,77 @@ else
         }
     }
 
-    private async void OnProgressChanged(object? sender, UpscaleProgressEventArgs e)
+    // Event handlers are sync void - the singleton service raises them off the render thread,
+    // so an unhandled exception in an async void handler would take down the process.
+    private void OnProgressChanged(object? sender, UpscaleProgressEventArgs e)
     {
-        // Throttle UI updates to 100ms
+        // Throttle UI updates to 100ms, but never drop the terminal update
+        var isFinalUpdate = e.ProgressPercentage >= 100 || e.Status != UpscaleJobStatus.Running;
         var now = DateTime.UtcNow;
-        if ((now - _lastProgressUpdate).TotalMilliseconds < 100)
+        if (!isFinalUpdate && (now - _lastProgressUpdate).TotalMilliseconds < 100)
             return;
 
         _lastProgressUpdate = now;
 
-        await InvokeAsync(() =>
+        // The queue service already mutated the job instances we hold, so just re-render
+        RunOnUi(StateHasChanged);
+    }
+
+    private void OnStatusChanged(object? sender, UpscaleProgressEventArgs e)
+    {
+        _ = InvokeAsync(async () =>
         {
-            var job = _activeJobs.FirstOrDefault(j => j.JobId == e.JobId);
-            if (job != null)
+            try
             {
-                job.ProgressPercentage = e.ProgressPercentage;
-                job.CurrentFrame = e.CurrentFrame;
-                job.TotalFrames = e.TotalFrames;
-                job.EstimatedTimeRemaining = e.EstimatedTimeRemaining;
+                await LoadJobsAsync();
                 StateHasChanged();
+
+                var message = e.Status switch
+                {
+                    UpscaleJobStatus.Completed => "Job completed successfully!",
+                    UpscaleJobStatus.Failed => $"Job failed: {e.ErrorMessage}",
+                    UpscaleJobStatus.Cancelled => "Job cancelled",
+                    _ => null
+                };
+
+                if (message != null)
+                {
+                    var severity = e.Status == UpscaleJobStatus.Completed ? Severity.Success : Severity.Warning;
+                    Snackbar.Add(message, severity);
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[UpscaleQueue] Status change handler failed: {ex}");
             }
         });
     }
 
-    private async void OnStatusChanged(object? sender, UpscaleProgressEventArgs e)
+    private void OnQueueStatusChanged(object? sender, bool isPaused)
     {
-        await InvokeAsync(async () =>
-        {
-            await LoadJobsAsync();
-            StateHasChanged();
-
-            var message = e.Status switch
-            {
-                UpscaleJobStatus.Completed => "Job completed successfully!",
-                UpscaleJobStatus.Failed => $"Job failed: {e.ErrorMessage}",
-                UpscaleJobStatus.Cancelled => "Job cancelled",
-                _ => null
-            };
-
-            if (message != null)
-            {
-                var severity = e.Status == UpscaleJobStatus.Completed ? Severity.Success : Severity.Warning;
-                Snackbar.Add(message, severity);
-            }
-        });
-    }
-
-    private async void OnQueueStatusChanged(object? sender, bool isPaused)
-    {
-        await InvokeAsync(() =>
+        RunOnUi(() =>
         {
             _isQueuePaused = isPaused;
             StateHasChanged();
+        });
+    }
+
+    /// <summary>
+    /// Marshals to the render thread and swallows failures - a throwing service event
+    /// must never escape onto a background thread and kill the process.
+    /// </summary>
+    private void RunOnUi(Action action)
+    {
+        _ = InvokeAsync(() =>
+        {
+            try
+            {
+                action();
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[UpscaleQueue] UI update failed: {ex}");
+            }
         });
     }
 

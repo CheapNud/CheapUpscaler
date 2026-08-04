@@ -202,8 +202,7 @@ public class RealCuganService
                             var fallbackScript = GenerateRealCuganScript(inputVideoPath, fallbackOptions);
                             await File.WriteAllTextAsync(tempScriptPath, fallbackScript, cancellationToken);
 
-                            // Update options to use CUDA for the actual processing
-                            options.Backend = 1;
+                            // The regenerated script file drives the actual run - no need to mutate the caller's options
                         }
                         else
                         {
@@ -217,109 +216,17 @@ public class RealCuganService
                 }
             }
 
-            // Determine FFmpeg path to use
-            var ffmpegExe = ffmpegPath ?? "ffmpeg";
-
-            // Try to find SVP's FFmpeg if not provided
-            if (string.IsNullOrEmpty(ffmpegPath) || ffmpegPath == "ffmpeg")
-            {
-                var svpFFmpeg = @"C:\Program Files (x86)\SVP 4\utils\ffmpeg.exe";
-                if (File.Exists(svpFFmpeg))
-                {
-                    ffmpegExe = svpFFmpeg;
-                }
-            }
-
-            // Run vspipe -> FFmpeg pipeline
+            // Run through the shared vspipe -> FFmpeg pipeline
+            // (handles progress via -p, cancellation, orphan-kill and audio/subtitle muxing)
             _logger?.LogDebug("Starting Real-CUGAN processing pipeline...");
 
-            var vspipeProcess = new ProcessStartInfo
-            {
-                FileName = vspipePath,
-                Arguments = $"\"{tempScriptPath}\" - -c y4m",
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
+            var ffmpegExe = VspipePipeline.ResolveFfmpegPath(ffmpegPath);
+            var encodeArgs = VspipePipeline.BuildEncodeArguments(inputVideoPath, outputVideoPath);
 
-            // Use high-quality encoding settings for upscaled output
-            var ffmpegProcess = new ProcessStartInfo
-            {
-                FileName = ffmpegExe,
-                Arguments = $"-i - -c:v libx264 -preset slow -crf 18 -pix_fmt yuv420p -y \"{outputVideoPath}\"",
-                RedirectStandardInput = true,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
+            var (success, _, _) = await VspipePipeline.RunAsync(
+                vspipePath, tempScriptPath, ffmpegExe, encodeArgs, progress, _logger, cancellationToken);
 
-            _logger?.LogDebug("Pipeline: {VspipeCmd} {VspipeArgs} | {FfmpegCmd} {FfmpegArgs}", vspipeProcess.FileName, vspipeProcess.Arguments, ffmpegProcess.FileName, ffmpegProcess.Arguments);
-
-            // Start both processes and pipe vspipe output to ffmpeg input
-            using var vspipe = SysProcess.Start(vspipeProcess);
-            using var ffmpeg = SysProcess.Start(ffmpegProcess);
-
-            if (vspipe == null || ffmpeg == null)
-            {
-                throw new InvalidOperationException("Failed to start vspipe or ffmpeg process");
-            }
-
-            // Pipe vspipe stdout to ffmpeg stdin
-            var pipeTask = Task.Run(async () =>
-            {
-                await vspipe.StandardOutput.BaseStream.CopyToAsync(ffmpeg.StandardInput.BaseStream, cancellationToken);
-                ffmpeg.StandardInput.Close();
-            }, cancellationToken);
-
-            // Monitor progress from vspipe stderr
-            var progressTask = Task.Run(async () =>
-            {
-                string? line;
-                var framePattern = new Regex(@"Frame:\s*(\d+)/(\d+)");
-
-                while ((line = await vspipe.StandardError.ReadLineAsync(cancellationToken)) != null)
-                {
-                    _logger?.LogDebug("[vspipe] {Line}", line);
-
-                    var match = framePattern.Match(line);
-                    if (match.Success &&
-                        int.TryParse(match.Groups[1].Value, out var current) &&
-                        int.TryParse(match.Groups[2].Value, out var total) &&
-                        total > 0)
-                    {
-                        progress?.Report((double)current / total * 100);
-                    }
-                }
-            }, cancellationToken);
-
-            // Monitor FFmpeg output
-            var ffmpegMonitorTask = Task.Run(async () =>
-            {
-                string? line;
-                while ((line = await ffmpeg.StandardError.ReadLineAsync(cancellationToken)) != null)
-                {
-                    _logger?.LogDebug("[ffmpeg] {Line}", line);
-                }
-            }, cancellationToken);
-
-            // Wait for all tasks to complete
-            await Task.WhenAll(
-                vspipe.WaitForExitAsync(cancellationToken),
-                ffmpeg.WaitForExitAsync(cancellationToken),
-                pipeTask,
-                progressTask,
-                ffmpegMonitorTask
-            );
-
-            var success = vspipe.ExitCode == 0 && ffmpeg.ExitCode == 0;
-
-            if (!success)
-            {
-                _logger?.LogError("Processing failed - vspipe exit: {VspipeExitCode}, ffmpeg exit: {FfmpegExitCode}", vspipe.ExitCode, ffmpeg.ExitCode);
-            }
-            else
+            if (success)
             {
                 _logger?.LogDebug("Real-CUGAN upscaling completed successfully: {OutputPath}", outputVideoPath);
             }
@@ -356,10 +263,11 @@ import os
 
 core = vs.core
 
-# Add VapourSynth scripts folder to Python path for vsmlrt import
-scripts_path = os.path.join(os.environ['APPDATA'], 'VapourSynth', 'scripts')
-if scripts_path not in sys.path:
-    sys.path.insert(0, scripts_path)
+# Add VapourSynth scripts folder to Python path for vsmlrt import (Windows only - APPDATA doesn't exist on Linux)
+if os.name == 'nt':
+    scripts_path = os.path.join(os.environ.get('APPDATA', ''), 'VapourSynth', 'scripts')
+    if scripts_path not in sys.path:
+        sys.path.insert(0, scripts_path)
 
 # Try to import vs-mlrt (vsmlrt Python wrapper)
 try:
@@ -368,17 +276,18 @@ except ImportError as e:
     raise Exception('vsmlrt not installed. Run: pip install vsmlrt')
 
 # Load video - try multiple source filters
+_source = {VspipePipeline.PyQuote(inputVideoPath)}
 try:
-    clip = core.bs.VideoSource(source=r'{inputVideoPath}')
+    clip = core.bs.VideoSource(source=_source)
 except:
     try:
-        clip = core.ffms2.Source(r'{inputVideoPath}')
+        clip = core.ffms2.Source(_source)
     except:
         try:
-            clip = core.lsmas.LWLibavSource(r'{inputVideoPath}')
+            clip = core.lsmas.LWLibavSource(_source)
         except:
             try:
-                clip = core.avisource.AVISource(r'{inputVideoPath}')
+                clip = core.avisource.AVISource(_source)
             except Exception as e:
                 raise Exception(
                     'No VapourSynth source plugin found. Please install one of: '
@@ -390,10 +299,12 @@ width = clip.width
 height = clip.height
 fps = clip.fps
 
+# Detect source color matrix before entering the processing block
+{VspipePipeline.MatrixDetectSnippet}
 # Apply Real-CUGAN upscaling via vs-mlrt
 try:
     # CUGAN requires RGBS (RGB float32) or RGBH (RGB float16) format
-    clip = core.resize.Bicubic(clip, format=vs.RGBS, matrix_in_s='709')
+    clip = core.resize.Bicubic(clip, format=vs.RGBS, matrix_in=_matrix)
 
     # Configure backend for processing
     backend = {backendCode}
@@ -407,7 +318,7 @@ try:
     )
 
     # Convert back to YUV420P for Y4M output
-    clip = core.resize.Bicubic(clip, format=vs.YUV420P16, matrix_s='709')
+    clip = core.resize.Bicubic(clip, format=vs.YUV420P16, matrix=_matrix)
 
 except Exception as e:
     import traceback

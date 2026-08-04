@@ -76,20 +76,20 @@ class Program
             options.ShutdownTimeout = TimeSpan.FromSeconds(30);
         });
 
-        // Ensure database is created
-        EnsureDatabaseCreated(dbPath);
+        // Apply pending migrations (creates the database on first run)
+        MigrateDatabase(dbPath);
 
         builder.RunApp(args);
     }
 
-    private static void EnsureDatabaseCreated(string dbPath)
+    private static void MigrateDatabase(string dbPath)
     {
         var options = new DbContextOptionsBuilder<UpscaleJobDbContext>()
             .UseSqlite($"Data Source={dbPath};Cache=Shared")
             .Options;
 
         using var context = new UpscaleJobDbContext(options);
-        context.Database.EnsureCreated();
+        context.Database.Migrate();
     }
 
     /// <summary>

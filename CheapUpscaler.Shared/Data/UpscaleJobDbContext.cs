@@ -28,6 +28,7 @@ public class UpscaleJobDbContext(DbContextOptions<UpscaleJobDbContext> options) 
             entity.HasIndex(e => e.CreatedAt);
 
             entity.Property(e => e.JobId).IsRequired();
+            entity.Property(e => e.JobName).HasMaxLength(256);
             entity.Property(e => e.SourceVideoPath).IsRequired().HasMaxLength(1024);
             entity.Property(e => e.OutputPath).IsRequired().HasMaxLength(1024);
             entity.Property(e => e.SettingsJson).HasMaxLength(4096);
@@ -45,6 +46,7 @@ public class UpscaleJobEntity
 {
     public int Id { get; set; }
     public Guid JobId { get; set; }
+    public string? JobName { get; set; }
 
     // Source & Output
     public string SourceVideoPath { get; set; } = string.Empty;
@@ -78,6 +80,18 @@ public class UpscaleJobEntity
     public int? ProcessId { get; set; }
     public string? MachineName { get; set; }
 
+    // Source video info
+    public int? SourceWidth { get; set; }
+    public int? SourceHeight { get; set; }
+    public double? SourceFps { get; set; }
+    public long? SourceDurationTicks { get; set; }
+
+    // Output info
+    public int? OutputWidth { get; set; }
+    public int? OutputHeight { get; set; }
+    public double? OutputFps { get; set; }
+    public long? OutputFileSizeBytes { get; set; }
+
     /// <summary>
     /// Convert entity to domain model
     /// </summary>
@@ -85,6 +99,7 @@ public class UpscaleJobEntity
     {
         Id = Id,
         JobId = JobId,
+        JobName = JobName,
         SourceVideoPath = SourceVideoPath,
         OutputPath = OutputPath,
         UpscaleType = UpscaleType,
@@ -106,43 +121,46 @@ public class UpscaleJobEntity
         RetryCount = RetryCount,
         MaxRetries = MaxRetries,
         ProcessId = ProcessId,
-        MachineName = MachineName
+        MachineName = MachineName,
+        SourceWidth = SourceWidth,
+        SourceHeight = SourceHeight,
+        SourceFps = SourceFps,
+        SourceDuration = SourceDurationTicks.HasValue
+            ? TimeSpan.FromTicks(SourceDurationTicks.Value)
+            : null,
+        OutputWidth = OutputWidth,
+        OutputHeight = OutputHeight,
+        OutputFps = OutputFps,
+        OutputFileSizeBytes = OutputFileSizeBytes
     };
 
     /// <summary>
     /// Create entity from domain model
     /// </summary>
-    public static UpscaleJobEntity FromModel(UpscaleJob job) => new()
+    public static UpscaleJobEntity FromModel(UpscaleJob job)
     {
-        Id = job.Id,
-        JobId = job.JobId,
-        SourceVideoPath = job.SourceVideoPath,
-        OutputPath = job.OutputPath,
-        UpscaleType = job.UpscaleType,
-        SettingsJson = job.SettingsJson,
-        Status = job.Status,
-        ProgressPercentage = job.ProgressPercentage,
-        CurrentFrame = job.CurrentFrame,
-        TotalFrames = job.TotalFrames,
-        EstimatedTimeRemainingTicks = job.EstimatedTimeRemaining?.Ticks,
-        CreatedAt = job.CreatedAt,
-        QueuedAt = job.QueuedAt,
-        StartedAt = job.StartedAt,
-        CompletedAt = job.CompletedAt,
-        LastUpdatedAt = job.LastUpdatedAt,
-        LastError = job.LastError,
-        ErrorStackTrace = job.ErrorStackTrace,
-        RetryCount = job.RetryCount,
-        MaxRetries = job.MaxRetries,
-        ProcessId = job.ProcessId,
-        MachineName = job.MachineName
-    };
+        // Identity/creation fields are set once here; everything else goes through UpdateFrom
+        // so the insert and update paths can never drift apart.
+        var entity = new UpscaleJobEntity
+        {
+            Id = job.Id,
+            JobId = job.JobId,
+            CreatedAt = job.CreatedAt
+        };
+        entity.UpdateFrom(job);
+        return entity;
+    }
 
     /// <summary>
-    /// Update entity from domain model
+    /// Update entity from domain model (all mutable fields; Id, JobId and CreatedAt are preserved)
     /// </summary>
     public void UpdateFrom(UpscaleJob job)
     {
+        JobName = job.JobName;
+        SourceVideoPath = job.SourceVideoPath;
+        OutputPath = job.OutputPath;
+        UpscaleType = job.UpscaleType;
+        SettingsJson = job.SettingsJson;
         Status = job.Status;
         ProgressPercentage = job.ProgressPercentage;
         CurrentFrame = job.CurrentFrame;
@@ -155,8 +173,17 @@ public class UpscaleJobEntity
         LastError = job.LastError;
         ErrorStackTrace = job.ErrorStackTrace;
         RetryCount = job.RetryCount;
+        MaxRetries = job.MaxRetries;
         ProcessId = job.ProcessId;
         MachineName = job.MachineName;
+        SourceWidth = job.SourceWidth;
+        SourceHeight = job.SourceHeight;
+        SourceFps = job.SourceFps;
+        SourceDurationTicks = job.SourceDuration?.Ticks;
+        OutputWidth = job.OutputWidth;
+        OutputHeight = job.OutputHeight;
+        OutputFps = job.OutputFps;
+        OutputFileSizeBytes = job.OutputFileSizeBytes;
     }
 }
 

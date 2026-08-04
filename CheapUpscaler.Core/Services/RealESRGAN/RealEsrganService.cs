@@ -144,164 +144,17 @@ public class RealEsrganService
                 }
             }
 
-            // Determine FFmpeg path to use
-            var ffmpegExe = ffmpegPath ?? "ffmpeg";
-
-            // Try to find SVP's FFmpeg if not provided
-            if (string.IsNullOrEmpty(ffmpegPath) || ffmpegPath == "ffmpeg")
-            {
-                var svpFFmpeg = @"C:\Program Files (x86)\SVP 4\utils\ffmpeg.exe";
-                if (File.Exists(svpFFmpeg))
-                {
-                    ffmpegExe = svpFFmpeg;
-                }
-            }
-
-            // Run vspipe -> FFmpeg pipeline
+            // Run through the shared vspipe -> FFmpeg pipeline
+            // (handles progress, cancellation, orphan-kill and audio/subtitle muxing)
             _logger?.LogDebug("Starting Real-ESRGAN processing pipeline...");
 
-            var vspipeProcess = new ProcessStartInfo
-            {
-                FileName = vspipePath,
-                Arguments = $"-p \"{tempScriptPath}\" - -c y4m",
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
+            var ffmpegExe = VspipePipeline.ResolveFfmpegPath(ffmpegPath);
+            var encodeArgs = VspipePipeline.BuildEncodeArguments(inputVideoPath, outputVideoPath);
 
-            // Use high-quality encoding settings for upscaled output
-            var ffmpegProcess = new ProcessStartInfo
-            {
-                FileName = ffmpegExe,
-                Arguments = $"-i - -c:v libx264 -preset slow -crf 18 -pix_fmt yuv420p -y \"{outputVideoPath}\"",
-                RedirectStandardInput = true,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
+            var (success, _, _) = await VspipePipeline.RunAsync(
+                vspipePath, tempScriptPath, ffmpegExe, encodeArgs, progress, _logger, cancellationToken);
 
-            _logger?.LogDebug("Pipeline: {VspipeCmd} {VspipeArgs} | {FfmpegCmd} {FfmpegArgs}", vspipeProcess.FileName, vspipeProcess.Arguments, ffmpegProcess.FileName, ffmpegProcess.Arguments);
-
-            // Start both processes and pipe vspipe output to ffmpeg input
-            using var vspipe = SysProcess.Start(vspipeProcess);
-            using var ffmpeg = SysProcess.Start(ffmpegProcess);
-
-            if (vspipe == null || ffmpeg == null)
-            {
-                throw new InvalidOperationException("Failed to start vspipe or ffmpeg process");
-            }
-
-            // Register cancellation handlers for graceful shutdown
-            var vspipeCancellation = cancellationToken.Register(async () =>
-            {
-                _logger?.LogDebug("Real-ESRGAN cancelled - shutting down vspipe...");
-                await ProcessManager.GracefulShutdownAsync(vspipe, gracefulTimeoutMs: 3000, processName: "vspipe (Real-ESRGAN)");
-            });
-
-            var ffmpegCancellation = cancellationToken.Register(async () =>
-            {
-                _logger?.LogDebug("Real-ESRGAN cancelled - shutting down ffmpeg...");
-                await ProcessManager.GracefulShutdownAsync(ffmpeg, gracefulTimeoutMs: 2000, processName: "ffmpeg (Real-ESRGAN)");
-            });
-
-            try
-            {
-                // Pipe vspipe stdout to ffmpeg stdin
-                var pipeTask = Task.Run(async () =>
-                {
-                    try
-                    {
-                        await vspipe.StandardOutput.BaseStream.CopyToAsync(ffmpeg.StandardInput.BaseStream, cancellationToken);
-                        ffmpeg.StandardInput.Close();
-                    }
-                    catch (OperationCanceledException)
-                    {
-                        _logger?.LogDebug("[Real-ESRGAN] Pipe operation cancelled");
-                    }
-                }, cancellationToken);
-
-                // Monitor progress from vspipe stderr
-                // vspipe uses \r for progress updates (not \n), so we read character by character
-                var progressTask = Task.Run(async () =>
-                {
-                    var framePattern = new Regex(@"Frame:\s*(\d+)/(\d+)");
-                    var buffer = new char[256];
-                    var lineBuilder = new System.Text.StringBuilder();
-                    var reader = vspipe.StandardError;
-
-                    while (!cancellationToken.IsCancellationRequested)
-                    {
-                        var bytesRead = await reader.ReadAsync(buffer, 0, buffer.Length);
-                        if (bytesRead == 0) break;
-
-                        for (int i = 0; i < bytesRead; i++)
-                        {
-                            var c = buffer[i];
-                            if (c == '\r' || c == '\n')
-                            {
-                                if (lineBuilder.Length > 0)
-                                {
-                                    var line = lineBuilder.ToString();
-                                    _logger?.LogDebug("[vspipe] {Line}", line);
-
-                                    var match = framePattern.Match(line);
-                                    if (match.Success &&
-                                        int.TryParse(match.Groups[1].Value, out var current) &&
-                                        int.TryParse(match.Groups[2].Value, out var total) &&
-                                        total > 0)
-                                    {
-                                        progress?.Report((double)current / total * 100);
-                                    }
-                                    lineBuilder.Clear();
-                                }
-                            }
-                            else
-                            {
-                                lineBuilder.Append(c);
-                            }
-                        }
-                    }
-                }, cancellationToken);
-
-                // Monitor FFmpeg output
-                var ffmpegMonitorTask = Task.Run(async () =>
-                {
-                    string? line;
-                    while ((line = await ffmpeg.StandardError.ReadLineAsync(cancellationToken)) != null)
-                    {
-                        _logger?.LogDebug("[ffmpeg] {Line}", line);
-                    }
-                }, cancellationToken);
-
-                // Wait for all tasks to complete
-                await Task.WhenAll(
-                    vspipe.WaitForExitAsync(cancellationToken),
-                    ffmpeg.WaitForExitAsync(cancellationToken),
-                    pipeTask,
-                    progressTask,
-                    ffmpegMonitorTask
-                );
-            }
-            catch (OperationCanceledException)
-            {
-                _logger?.LogDebug("Real-ESRGAN processing cancelled");
-                throw;
-            }
-            finally
-            {
-                vspipeCancellation.Dispose();
-                ffmpegCancellation.Dispose();
-            }
-
-            var success = vspipe.ExitCode == 0 && ffmpeg.ExitCode == 0;
-
-            if (!success)
-            {
-                _logger?.LogError("Processing failed - vspipe exit: {VspipeExitCode}, ffmpeg exit: {FfmpegExitCode}", vspipe.ExitCode, ffmpeg.ExitCode);
-            }
-            else
+            if (success)
             {
                 _logger?.LogDebug("Real-ESRGAN upscaling completed successfully: {OutputPath}", outputVideoPath);
             }
@@ -360,20 +213,21 @@ except ImportError as e:
 # Use temp directory for index files to avoid permission issues in Docker
 import tempfile
 import hashlib
-video_hash = hashlib.md5(r'{inputVideoPath}'.encode()).hexdigest()[:8]
+_source = {VspipePipeline.PyQuote(inputVideoPath)}
+video_hash = hashlib.md5(_source.encode()).hexdigest()[:8]
 index_path = os.path.join(tempfile.gettempdir(), f'ffms2_{{video_hash}}.ffindex')
 
 try:
-    clip = core.bs.VideoSource(source=r'{inputVideoPath}')
+    clip = core.bs.VideoSource(source=_source)
 except:
     try:
-        clip = core.ffms2.Source(r'{inputVideoPath}', cachefile=index_path)
+        clip = core.ffms2.Source(_source, cachefile=index_path)
     except:
         try:
-            clip = core.lsmas.LWLibavSource(r'{inputVideoPath}')
+            clip = core.lsmas.LWLibavSource(_source)
         except:
             try:
-                clip = core.avisource.AVISource(r'{inputVideoPath}')
+                clip = core.avisource.AVISource(_source)
             except Exception as e:
                 raise Exception(
                     'No VapourSynth source plugin found. Please install one of: '
@@ -385,10 +239,12 @@ width = clip.width
 height = clip.height
 fps = clip.fps
 
+# Detect source color matrix before entering the processing block
+{VspipePipeline.MatrixDetectSnippet}
 # Apply Real-ESRGAN upscaling
 try:
     # Convert to RGB format (required by vsrealesrgan)
-    clip = core.resize.Bicubic(clip, format={clipFormat}, matrix_in_s='709')
+    clip = core.resize.Bicubic(clip, format={clipFormat}, matrix_in=_matrix)
 
     # Apply Real-ESRGAN
     # TensorRT: None = auto-detect, True = force TRT, False = force Torch
@@ -404,7 +260,7 @@ try:
     )
 
     # Convert back to YUV420P8 for output
-    clip = core.resize.Bicubic(clip, format=vs.YUV420P8, matrix_s='709')
+    clip = core.resize.Bicubic(clip, format=vs.YUV420P8, matrix=_matrix)
 except Exception as e:
     import traceback
     error_msg = f'Real-ESRGAN upscaling failed: {{str(e)}}'

@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using CheapUpscaler.Core.Services.VapourSynth;
 using CheapUpscaler.Core.Services.RIFE;
@@ -27,16 +28,39 @@ public static class ServiceCollectionExtensions
 {
     /// <summary>
     /// Add platform-specific services (IPlatformPaths, IToolLocator)
-    /// Automatically detects Windows vs Linux and registers appropriate implementations
+    /// Detects Windows vs Linux at runtime and registers appropriate implementations.
+    /// Safe to call more than once - registrations are TryAdd.
     /// </summary>
     public static IServiceCollection AddPlatformServices(this IServiceCollection services)
     {
+        var isWindows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
+
+        // WindowsPlatformPaths compiles under every TFM, so a plain net11.0 build
+        // running on Windows still gets Windows paths.
+        if (isWindows)
+        {
+            services.TryAddSingleton<IPlatformPaths, WindowsPlatformPaths>();
+        }
+        else
+        {
+            services.TryAddSingleton<IPlatformPaths, LinuxPlatformPaths>();
+        }
+
 #if WINDOWS
-        services.AddSingleton<IPlatformPaths, WindowsPlatformPaths>();
-        services.AddSingleton<IToolLocator, WindowsToolLocator>();
+        if (isWindows)
+        {
+            services.TryAddSingleton<IToolLocator, WindowsToolLocator>();
+        }
+        else
+        {
+            services.TryAddSingleton<IToolLocator, LinuxToolLocator>();
+        }
 #else
-        services.AddSingleton<IPlatformPaths, LinuxPlatformPaths>();
-        services.AddSingleton<IToolLocator, LinuxToolLocator>();
+        // Limitation: WindowsToolLocator only compiles under the net11.0-windows TFM
+        // (it wraps the Windows-only CheapHelpers.MediaProcessing detection services).
+        // A plain net11.0 build therefore falls back to LinuxToolLocator even on Windows -
+        // build/publish as net11.0-windows to get native Windows tool detection.
+        services.TryAddSingleton<IToolLocator, LinuxToolLocator>();
 #endif
 
         return services;

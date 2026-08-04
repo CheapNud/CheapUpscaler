@@ -22,6 +22,7 @@ public class WorkerQueueService : BackgroundService, IUpscaleQueueService
     private readonly ConcurrentDictionary<Guid, CancellationTokenSource> _jobCancellations = new();
     private readonly SemaphoreSlim _processingSemaphore;
     private readonly int _maxConcurrentJobs;
+    private readonly bool _autoPauseWhenIdle;
     private volatile bool _isQueuePaused = true; // Default to paused
     private bool _isInitialized;
 
@@ -43,6 +44,7 @@ public class WorkerQueueService : BackgroundService, IUpscaleQueueService
         _processor = processor;
         _logger = logger;
         _maxConcurrentJobs = configuration.GetValue("Worker:MaxConcurrentJobs", 1);
+        _autoPauseWhenIdle = configuration.GetValue("Worker:AutoPauseWhenIdle", false);
         _processingSemaphore = new SemaphoreSlim(_maxConcurrentJobs, _maxConcurrentJobs);
     }
 
@@ -472,10 +474,16 @@ public class WorkerQueueService : BackgroundService, IUpscaleQueueService
     }
 
     /// <summary>
-    /// Automatically pause the queue if no pending or running jobs remain
+    /// Automatically pause the queue if no pending or running jobs remain.
+    /// Opt-in via Worker:AutoPauseWhenIdle - off by default so a running queue stays running.
     /// </summary>
     private async Task CheckAndAutoPauseQueueAsync()
     {
+        if (!_autoPauseWhenIdle)
+        {
+            return;
+        }
+
         var hasPendingJobs = _jobs.Values.Any(j =>
             j.Status is UpscaleJobStatus.Pending or UpscaleJobStatus.Running or UpscaleJobStatus.Paused);
 

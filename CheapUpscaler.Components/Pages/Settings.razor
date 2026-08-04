@@ -1,4 +1,5 @@
 @page "/settings"
+@using System.Text.Json
 @inject ISettingsService SettingsService
 @inject IFileDialogService FileDialog
 @inject ISnackbar Snackbar
@@ -314,16 +315,23 @@ else
 
     protected override async Task OnInitializedAsync()
     {
-        _settings = await SettingsService.LoadAsync();
+        // LoadAsync returns the service's live instance - edit a copy so unsaved keystrokes
+        // don't mutate the running configuration
+        _settings = Copy(await SettingsService.LoadAsync());
         _isLoading = false;
     }
+
+    private static AppSettings Copy(AppSettings source) =>
+        JsonSerializer.Deserialize<AppSettings>(JsonSerializer.Serialize(source, AppSettings.JsonOptions), AppSettings.JsonOptions)
+            ?? new AppSettings();
 
     private async Task SaveSettings()
     {
         _isSaving = true;
         try
         {
-            await SettingsService.SaveAsync(_settings);
+            // Hand over a copy so the page keeps editing its own instance after saving
+            await SettingsService.SaveAsync(Copy(_settings));
             Snackbar.Add("Settings saved successfully", Severity.Success);
         }
         catch (Exception ex)
@@ -336,11 +344,11 @@ else
         }
     }
 
-    private async Task ResetToDefaults()
+    private void ResetToDefaults()
     {
+        // Only resets the edited copy - nothing is persisted until Save
         _settings = new AppSettings();
-        await SettingsService.ResetToDefaultsAsync();
-        Snackbar.Add("Settings reset to defaults", Severity.Info);
+        Snackbar.Add("Settings reset to defaults - press Save to apply", Severity.Info);
     }
 
     private async Task BrowseFolder(Action<string> setter)

@@ -127,7 +127,8 @@
             <MudStack Spacing="1">
                 <MudText Typo="Typo.subtitle2">Upscale Method</MudText>
                 <MudSelect T="UpscaleType"
-                           @bind-Value="_selectedType"
+                           Value="_selectedType"
+                           ValueChanged="@OnUpscaleTypeChanged"
                            Variant="Variant.Outlined"
                            AnchorOrigin="Origin.BottomCenter">
                     <MudSelectItem Value="UpscaleType.Rife">
@@ -162,16 +163,20 @@
                 @switch (_selectedType)
                 {
                     case UpscaleType.Rife:
-                        <RifeSettingsPanel @bind-Settings="_rifeSettings" />
+                        <RifeSettingsPanel Settings="_rifeSettings"
+                                           SettingsChanged="@(s => { _rifeSettings = s; GenerateOutputPath(); })" />
                         break;
                     case UpscaleType.RealCugan:
-                        <RealCuganSettingsPanel @bind-Settings="_realCuganSettings" />
+                        <RealCuganSettingsPanel Settings="_realCuganSettings"
+                                                SettingsChanged="@(s => { _realCuganSettings = s; GenerateOutputPath(); })" />
                         break;
                     case UpscaleType.RealEsrgan:
-                        <RealEsrganSettingsPanel @bind-Settings="_realEsrganSettings" />
+                        <RealEsrganSettingsPanel Settings="_realEsrganSettings"
+                                                 SettingsChanged="@(s => { _realEsrganSettings = s; GenerateOutputPath(); })" />
                         break;
                     case UpscaleType.NonAi:
-                        <NonAiSettingsPanel @bind-Settings="_nonAiSettings" />
+                        <NonAiSettingsPanel Settings="_nonAiSettings"
+                                            SettingsChanged="@(s => { _nonAiSettings = s; GenerateOutputPath(); })" />
                         break;
                 }
             </MudPaper>
@@ -180,7 +185,9 @@
             <MudStack Spacing="1">
                 <MudText Typo="Typo.subtitle2">Output</MudText>
                 <MudStack Row="true" Spacing="2">
-                    <MudTextField @bind-Value="_outputPath"
+                    <MudTextField T="string"
+                                  Value="_outputPath"
+                                  ValueChanged="@OnOutputPathEdited"
                                   Placeholder="Output file path..."
                                   Variant="Variant.Outlined"
                                   Adornment="Adornment.Start"
@@ -230,6 +237,9 @@
     private VideoInfo? _videoInfo;
     private bool _isLoadingVideoInfo;
 
+    // Once the user edits the output path by hand we stop regenerating it from source + settings
+    private bool _outputPathTouched;
+
     // Settings for each type
     private RifeJobSettings _rifeSettings = new();
     private RealCuganJobSettings _realCuganSettings = new();
@@ -240,6 +250,18 @@
                             !string.IsNullOrWhiteSpace(_outputPath) &&
                             File.Exists(_sourcePath) &&
                             _videoInfo != null;
+
+    private void OnUpscaleTypeChanged(UpscaleType type)
+    {
+        _selectedType = type;
+        GenerateOutputPath();
+    }
+
+    private void OnOutputPathEdited(string outputPath)
+    {
+        _outputPath = outputPath;
+        _outputPathTouched = true;
+    }
 
     private async Task OnSourcePathChanged()
     {
@@ -299,7 +321,7 @@
         var result = await FileDialog.SaveFileAsync(options);
         if (!string.IsNullOrEmpty(result))
         {
-            _outputPath = result;
+            OnOutputPathEdited(result);
         }
     }
 
@@ -373,13 +395,13 @@
 
         if (result is { Canceled: false, Data: string path })
         {
-            _outputPath = path;
+            OnOutputPathEdited(path);
         }
     }
 
     private void GenerateOutputPath()
     {
-        if (string.IsNullOrEmpty(_sourcePath)) return;
+        if (_outputPathTouched || string.IsNullOrEmpty(_sourcePath)) return;
 
         // Use configured output directory instead of input directory to prevent accidental overwrites
         var directory = SettingsService.Settings.Queue.DefaultOutputDirectory;

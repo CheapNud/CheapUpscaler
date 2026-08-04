@@ -11,9 +11,7 @@ namespace CheapUpscaler.Blazor.Services;
 public class SettingsService : ISettingsService
 {
     private readonly string _settingsPath;
-    private readonly JsonSerializerOptions _jsonOptions;
     private AppSettings _settings = new();
-    private bool _isLoaded;
 
     public AppSettings Settings => _settings;
 
@@ -26,39 +24,49 @@ public class SettingsService : ISettingsService
         Directory.CreateDirectory(settingsDir);
         _settingsPath = Path.Combine(settingsDir, "settings.json");
 
-        _jsonOptions = new JsonSerializerOptions
+        // Load settings synchronously in constructor so Settings is never an unloaded default
+        if (File.Exists(_settingsPath))
         {
-            WriteIndented = true,
-            PropertyNamingPolicy = JsonNamingPolicy.CamelCase
-        };
+            try
+            {
+                var json = File.ReadAllText(_settingsPath);
+                _settings = JsonSerializer.Deserialize<AppSettings>(json, AppSettings.JsonOptions) ?? new AppSettings();
+                Debug.WriteLine($"Settings loaded from {_settingsPath}");
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Error loading settings: {ex.Message}");
+                _settings = new AppSettings();
+            }
+        }
+        else
+        {
+            Debug.WriteLine("Using default settings (no settings file found)");
+        }
     }
 
     public async Task<AppSettings> LoadAsync()
     {
-        if (_isLoaded)
-            return _settings;
-
-        try
+        if (File.Exists(_settingsPath))
         {
-            if (File.Exists(_settingsPath))
+            try
             {
                 var json = await File.ReadAllTextAsync(_settingsPath);
-                _settings = JsonSerializer.Deserialize<AppSettings>(json, _jsonOptions) ?? new AppSettings();
+                _settings = JsonSerializer.Deserialize<AppSettings>(json, AppSettings.JsonOptions) ?? new AppSettings();
                 Debug.WriteLine($"Settings loaded from {_settingsPath}");
             }
-            else
+            catch (Exception ex)
             {
+                Debug.WriteLine($"Error loading settings: {ex.Message}");
                 _settings = new AppSettings();
-                Debug.WriteLine("Using default settings (no settings file found)");
             }
         }
-        catch (Exception ex)
+        else
         {
-            Debug.WriteLine($"Error loading settings: {ex.Message}");
             _settings = new AppSettings();
+            Debug.WriteLine("Using default settings (no settings file found)");
         }
 
-        _isLoaded = true;
         return _settings;
     }
 
@@ -66,7 +74,7 @@ public class SettingsService : ISettingsService
     {
         try
         {
-            var json = JsonSerializer.Serialize(_settings, _jsonOptions);
+            var json = JsonSerializer.Serialize(_settings, AppSettings.JsonOptions);
             await File.WriteAllTextAsync(_settingsPath, json);
             Debug.WriteLine($"Settings saved to {_settingsPath}");
             SettingsChanged?.Invoke();

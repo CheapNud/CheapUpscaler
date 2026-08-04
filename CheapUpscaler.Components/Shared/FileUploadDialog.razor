@@ -16,11 +16,13 @@
                 <MudFileUpload T="IBrowserFile"
                                Accept="@GetAcceptString()"
                                MaximumFileCount="1"
+                               DragAndDrop="true"
                                FilesChanged="OnFileSelected">
-                    <ActivatorContent>
+                    <CustomContent>
                         <MudPaper Outlined="true"
                                   Class="pa-8 d-flex flex-column align-center justify-center"
-                                  Style="min-height: 150px; cursor: pointer; border-style: dashed;">
+                                  Style="min-height: 150px; cursor: pointer; border-style: dashed;"
+                                  @onclick="@context.OpenFilePickerAsync">
                             @if (_selectedFile == null)
                             {
                                 <MudIcon Icon="@Icons.Material.Filled.CloudUpload"
@@ -55,7 +57,7 @@
                                 }
                             }
                         </MudPaper>
-                    </ActivatorContent>
+                    </CustomContent>
                 </MudFileUpload>
 
                 <!-- Recent Uploads -->

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using CheapUpscaler.Shared.Data;
 using CheapUpscaler.Shared.Models;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -11,6 +12,7 @@ namespace CheapUpscaler.Worker.Services;
 public class FileWatcherService : BackgroundService
 {
     private readonly WorkerQueueService _queueService;
+    private readonly IUpscaleJobRepository _repository;
     private readonly IConfiguration _configuration;
     private readonly ILogger<FileWatcherService> _logger;
     private readonly List<FileSystemWatcher> _watchers = [];
@@ -25,10 +27,12 @@ public class FileWatcherService : BackgroundService
 
     public FileWatcherService(
         WorkerQueueService queueService,
+        IUpscaleJobRepository repository,
         IConfiguration configuration,
         ILogger<FileWatcherService> logger)
     {
         _queueService = queueService;
+        _repository = repository;
         _configuration = configuration;
         _logger = logger;
     }
@@ -62,10 +66,15 @@ public class FileWatcherService : BackgroundService
             EnableRaisingEvents = true
         };
 
-        watcher.Created += async (sender, e) => await OnFileCreatedAsync(e.FullPath, outputPath);
-        watcher.Renamed += async (sender, e) => await OnFileCreatedAsync(e.FullPath, outputPath);
+        // FileSystemWatcher events are async void: an unhandled exception here kills the process
+        watcher.Created += (sender, e) => _ = HandleFileEventAsync(e.FullPath, outputPath);
+        watcher.Renamed += (sender, e) => _ = HandleFileEventAsync(e.FullPath, outputPath);
 
         _watchers.Add(watcher);
+
+        // Cleanup must run on cancellation - a post-loop block is unreachable because
+        // the Task.Delay below throws OperationCanceledException on shutdown
+        stoppingToken.Register(DisposeWatchers);
 
         _logger.LogInformation("FileWatcherService started");
 
@@ -74,15 +83,37 @@ public class FileWatcherService : BackgroundService
         {
             await Task.Delay(TimeSpan.FromSeconds(30), stoppingToken);
         }
+    }
 
-        // Cleanup
+    private void DisposeWatchers()
+    {
         foreach (var w in _watchers)
         {
-            w.EnableRaisingEvents = false;
-            w.Dispose();
+            try
+            {
+                w.EnableRaisingEvents = false;
+                w.Dispose();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Error disposing file watcher");
+            }
         }
 
+        _watchers.Clear();
         _logger.LogInformation("FileWatcherService stopped");
+    }
+
+    private async Task HandleFileEventAsync(string filePath, string outputPath)
+    {
+        try
+        {
+            await OnFileCreatedAsync(filePath, outputPath);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error handling file event for {FilePath}", filePath);
+        }
     }
 
     private async Task ProcessExistingFilesAsync(string inputPath, string outputPath, CancellationToken cancellationToken)
@@ -151,10 +182,14 @@ public class FileWatcherService : BackgroundService
             return;
         }
 
-        // Check if a job already exists for this input file
-        var existingJobs = await _queueService.GetAllJobsAsync();
-        if (existingJobs.Any(j => j.SourceVideoPath == inputFile &&
-            j.Status is UpscaleJobStatus.Pending or UpscaleJobStatus.Running or UpscaleJobStatus.Paused))
+        // Check the database rather than the queue's in-memory cache: on restart the cache
+        // may not be populated yet, which would re-queue every file already persisted
+        var existingJobs = await _repository.GetByStatusAsync(
+            UpscaleJobStatus.Pending,
+            UpscaleJobStatus.Running,
+            UpscaleJobStatus.Paused);
+
+        if (existingJobs.Any(j => string.Equals(j.SourceVideoPath, inputFile, StringComparison.OrdinalIgnoreCase)))
         {
             _logger.LogInformation("Job already exists for {FileName}, skipping auto-queue", fileName);
             return;

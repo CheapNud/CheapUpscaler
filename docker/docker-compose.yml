@@ -24,8 +24,8 @@ services:
 
     # Volume mounts
     volumes:
-      # Input folder - read-only watch folder
-      - ./input:/data/input:ro
+      # Input folder - watch folder (writable: uploads land here)
+      - ./input:/data/input
       # Output folder - processed videos
       - ./output:/data/output
       # Models folder - RIFE/ESRGAN models (mounted, not embedded)

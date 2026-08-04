@@ -168,10 +168,9 @@ public class ServerFileUploadService(IConfiguration configuration, ILogger<Serve
         try
         {
             var normalizedPath = Path.GetFullPath(filePath);
-            var normalizedInput = Path.GetFullPath(_inputPath);
 
-            // Security: Only allow deleting files within input directory
-            if (!normalizedPath.StartsWith(normalizedInput, StringComparison.OrdinalIgnoreCase))
+            // Security: Only allow deleting files within the upload (input) directory
+            if (!IsContainedIn(_inputPath, normalizedPath))
             {
                 logger.LogWarning("Attempted to delete file outside input directory: {FilePath}", filePath);
                 return false;
@@ -224,6 +223,18 @@ public class ServerFileUploadService(IConfiguration configuration, ILogger<Serve
 
         var json = JsonSerializer.Serialize(uploads, new JsonSerializerOptions { WriteIndented = true });
         await File.WriteAllTextAsync(_uploadsMetadataFile, json);
+    }
+
+    /// <summary>
+    /// True when fullPath is the root itself or below it. Uses relative-path containment
+    /// rather than StartsWith, which would accept siblings like /data/input-backup.
+    /// </summary>
+    private static bool IsContainedIn(string root, string fullPath)
+    {
+        var relative = Path.GetRelativePath(Path.GetFullPath(root), Path.GetFullPath(fullPath));
+
+        return !Path.IsPathRooted(relative)
+            && !relative.StartsWith("..", StringComparison.Ordinal);
     }
 
     private static string SanitizeFileName(string fileName)
