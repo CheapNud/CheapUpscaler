@@ -1,8 +1,7 @@
-using System.Diagnostics;
-using System.Text.RegularExpressions;
 using CheapUpscaler.Components.Models;
 using CheapUpscaler.Components.Services;
 using CheapUpscaler.Core.Services.VapourSynth;
+using CheapUpscaler.Shared.Services;
 using Microsoft.Extensions.Logging;
 
 namespace CheapUpscaler.Worker.Services;
@@ -47,13 +46,13 @@ public class WorkerDependencyChecker(
 
         try
         {
-            var ffmpegPath = FindFFmpegInPath();
+            var ffmpegPath = ToolProbe.FindFFmpeg();
             info.IsInstalled = ffmpegPath != null;
             info.Path = ffmpegPath;
 
             if (info.IsInstalled)
             {
-                info.Version = GetFFmpegVersion(ffmpegPath!);
+                info.Version = ToolProbe.GetFFmpegVersion(ffmpegPath!);
             }
         }
         catch (Exception ex)
@@ -128,116 +127,5 @@ public class WorkerDependencyChecker(
         }
 
         return info;
-    }
-
-    private static string? FindFFmpegInPath()
-    {
-        // Check common Linux locations (for Docker)
-        if (!OperatingSystem.IsWindows())
-        {
-            var linuxPaths = new[]
-            {
-                "/usr/bin/ffmpeg",
-                "/usr/local/bin/ffmpeg"
-            };
-
-            foreach (var path in linuxPaths)
-            {
-                if (File.Exists(path))
-                {
-                    return path;
-                }
-            }
-        }
-
-        // Check common Windows locations
-        if (OperatingSystem.IsWindows())
-        {
-            var windowsPaths = new[]
-            {
-                @"C:\ffmpeg\bin\ffmpeg.exe",
-                @"C:\Program Files\ffmpeg\bin\ffmpeg.exe",
-                @"C:\Program Files (x86)\ffmpeg\bin\ffmpeg.exe"
-            };
-
-            foreach (var path in windowsPaths)
-            {
-                if (File.Exists(path))
-                {
-                    return path;
-                }
-            }
-        }
-
-        // Try to find in PATH
-        try
-        {
-            var fileName = OperatingSystem.IsWindows() ? "ffmpeg.exe" : "ffmpeg";
-            var processInfo = new ProcessStartInfo
-            {
-                FileName = fileName,
-                Arguments = "-version",
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
-
-            using var process = Process.Start(processInfo);
-            if (process != null)
-            {
-                process.WaitForExit(5000);
-                if (process.ExitCode == 0)
-                {
-                    return fileName; // In PATH
-                }
-            }
-        }
-        catch
-        {
-            // Not found
-        }
-
-        return null;
-    }
-
-    private static string? GetFFmpegVersion(string ffmpegPath)
-    {
-        try
-        {
-            var startInfo = new ProcessStartInfo
-            {
-                FileName = ffmpegPath,
-                Arguments = "-version",
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
-
-            using var process = Process.Start(startInfo);
-            if (process == null) return null;
-
-            var output = process.StandardOutput.ReadLine();
-
-            // Don't leave a hung ffmpeg behind if it never exits
-            if (!process.WaitForExit(5000))
-            {
-                try { process.Kill(); } catch { }
-            }
-
-            // Parse version from "ffmpeg version N.N.N ..."
-            if (output != null)
-            {
-                var match = Regex.Match(output, @"version\s+(\S+)");
-                if (match.Success) return match.Groups[1].Value;
-            }
-
-            return null;
-        }
-        catch
-        {
-            return null;
-        }
     }
 }

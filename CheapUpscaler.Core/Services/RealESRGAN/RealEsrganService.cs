@@ -158,7 +158,7 @@ public class RealEsrganService
             _logger?.LogDebug("Starting Real-ESRGAN processing pipeline...");
 
             var ffmpegExe = VspipePipeline.ResolveFfmpegPath(ffmpegPath);
-            var encodeArgs = VspipePipeline.BuildEncodeArguments(inputVideoPath, outputVideoPath);
+            var encodeArgs = VspipePipeline.BuildEncodeArguments(inputVideoPath, outputVideoPath, ffmpegPath: ffmpegExe);
 
             var (success, _, _) = await VspipePipeline.RunAsync(
                 vspipePath, tempScriptPath, ffmpegExe, encodeArgs, progress, _logger, cancellationToken);

@@ -16,8 +16,38 @@ namespace CheapUpscaler.Core.Services.RIFE;
 /// </summary>
 public class RifeInterpolationService
 {
+    /// <summary>
+    /// Single source of truth for the RIFE models we support: our model name, SVP's ONNX
+    /// filename, and the integer model ID vsmlrt expects (base versions are 3-digit, e.g. 416;
+    /// lite versions append 1, e.g. 4161).
+    /// </summary>
+    private sealed record RifeModel(string Name, string OnnxFile, int ModelId);
+
+    private static readonly RifeModel[] Models =
+    [
+        new("rife-v4.6", "rife_v4.6.onnx", 46),
+        new("rife-v4.14", "rife_v4.14.onnx", 414),
+        new("rife-v4.14-lite", "rife_v4.14_lite.onnx", 4141),
+        new("rife-v4.15", "rife_v4.15.onnx", 415),
+        new("rife-v4.15-lite", "rife_v4.15_lite.onnx", 4151),
+        new("rife-v4.16", "rife_v4.16.onnx", 416),
+        new("rife-v4.16-lite", "rife_v4.16_lite.onnx", 4161),
+        new("rife-v4.17", "rife_v4.17.onnx", 417),
+        new("rife-v4.18", "rife_v4.18.onnx", 418),
+        new("rife-v4.20", "rife_v4.20.onnx", 420),
+        new("rife-v4.21", "rife_v4.21.onnx", 421),
+        new("rife-v4.22", "rife_v4.22.onnx", 422),
+        new("rife-v4.22-lite", "rife_v4.22_lite.onnx", 4221),
+        new("rife-v4.25", "rife_v4.25.onnx", 425),
+        new("rife-v4.25-lite", "rife_v4.25_lite.onnx", 4251),
+        new("rife-v4.26", "rife_v4.26.onnx", 426),
+        new("rife-anime", "rife_v4.8_anime.onnx", 48),
+        new("rife-UHD", "rife_v4.9_uhd.onnx", 49)
+    ];
+
     private readonly string _rifeFolderPath;
     private readonly string _pythonPath;
+    private readonly IVapourSynthEnvironment _environment;
     private readonly ILogger<RifeInterpolationService>? _logger;
     private bool? _isSvpRife;
     private bool _isValidated;
@@ -124,39 +154,25 @@ public class RifeInterpolationService
 
     /// <summary>
     /// Maps ONNX filename (without extension) to our model name format
+    /// e.g., "rife_v4.6" -> "rife-v4.6", "rife_v4.22_lite" -> "rife-v4.22-lite"
     /// </summary>
     private static string? MapOnnxFilenameToModelName(string onnxName)
     {
-        // Map SVP's ONNX filenames to our model names
-        // e.g., "rife_v4.6" -> "rife-v4.6", "rife_v4.22_lite" -> "rife-v4.22-lite"
-        return onnxName.ToLower() switch
-        {
-            "rife_v4.6" => "rife-v4.6",
-            "rife_v4.14" => "rife-v4.14",
-            "rife_v4.14_lite" => "rife-v4.14-lite",
-            "rife_v4.15" => "rife-v4.15",
-            "rife_v4.15_lite" => "rife-v4.15-lite",
-            "rife_v4.16" => "rife-v4.16",
-            "rife_v4.16_lite" => "rife-v4.16-lite",
-            "rife_v4.17" => "rife-v4.17",
-            "rife_v4.18" => "rife-v4.18",
-            "rife_v4.20" => "rife-v4.20",
-            "rife_v4.21" => "rife-v4.21",
-            "rife_v4.22" => "rife-v4.22",
-            "rife_v4.22_lite" => "rife-v4.22-lite",
-            "rife_v4.25" => "rife-v4.25",
-            "rife_v4.25_lite" => "rife-v4.25-lite",
-            "rife_v4.26" => "rife-v4.26",
-            "rife_v4.9_uhd" => "rife-UHD",
-            "rife_v4.8_anime" => "rife-anime",
-            _ => null // Unknown model
-        };
+        return Models
+            .FirstOrDefault(m => Path.GetFileNameWithoutExtension(m.OnnxFile)
+                .Equals(onnxName, StringComparison.OrdinalIgnoreCase))?.Name;
     }
 
-    public RifeInterpolationService(string rifeFolderPath = "", string pythonPath = "", ILogger<RifeInterpolationService>? logger = null)
+    public RifeInterpolationService(
+        string rifeFolderPath = "",
+        string pythonPath = "",
+        ILogger<RifeInterpolationService>? logger = null,
+        IVapourSynthEnvironment? environment = null)
     {
         _rifeFolderPath = rifeFolderPath;
         _logger = logger;
+        // Falls back to a standalone environment for hosts that construct this service directly.
+        _environment = environment ?? new VapourSynthEnvironment();
 
         // Auto-detect Python path if not specified
         if (string.IsNullOrEmpty(pythonPath))
@@ -330,7 +346,7 @@ public class RifeInterpolationService
             _logger?.LogDebug("Attempting SVP RIFE interpolation via VapourSynth...");
 
             // Check for vspipe (VapourSynth's command-line tool)
-            var vspipePath = FindVsPipe();
+            var vspipePath = _environment.VsPipePath;
             if (string.IsNullOrEmpty(vspipePath))
             {
                 throw new FileNotFoundException("vspipe.exe not found. Please install VapourSynth or ensure it's in PATH.");
@@ -423,7 +439,7 @@ public class RifeInterpolationService
                 // Run the actual processing through the shared vspipe -> FFmpeg pipeline
                 // (handles progress, cancellation, orphan-kill and audio/subtitle muxing)
                 var ffmpegExe = VspipePipeline.ResolveFfmpegPath(ffmpegPath);
-                var encodeArgs = VspipePipeline.BuildEncodeArguments(inputVideoPath, outputVideoPath, preset: "fast");
+                var encodeArgs = VspipePipeline.BuildEncodeArguments(inputVideoPath, outputVideoPath, preset: "fast", ffmpegPath: ffmpegExe);
 
                 var (success, _, _) = await VspipePipeline.RunAsync(
                     vspipePath, tempScriptPath, ffmpegExe, encodeArgs, progress, _logger, cancellationToken);
@@ -584,262 +600,10 @@ public class RifeInterpolationService
     }
 
     /// <summary>
-    /// Interpolate frames in a directory (for pipeline usage)
-    /// </summary>
-    public async Task<bool> InterpolateFramesAsync(
-        string inputFramesFolder,
-        string outputFramesFolder,
-        RifeOptions options,
-        IProgress<double>? progress = null,
-        CancellationToken cancellationToken = default,
-        string? ffmpegPath = null)
-    {
-        if (!Directory.Exists(inputFramesFolder))
-            throw new DirectoryNotFoundException($"Input frames folder not found: {inputFramesFolder}");
-
-        Directory.CreateDirectory(outputFramesFolder);
-
-        // Get frame files
-        var frameFiles = Directory.GetFiles(inputFramesFolder, "*.png")
-            .OrderBy(f => f, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
-
-        if (frameFiles.Length == 0)
-        {
-            _logger?.LogDebug("No PNG frames found in input folder");
-            return false;
-        }
-
-        _logger?.LogDebug("Found {FrameCount} frames to interpolate", frameFiles.Length);
-
-        // Use provided FFmpeg path or try to find it
-        if (string.IsNullOrEmpty(ffmpegPath))
-        {
-            ffmpegPath = "ffmpeg";
-            var svpFFmpeg = @"C:\Program Files (x86)\SVP 4\utils\ffmpeg.exe";
-            if (File.Exists(svpFFmpeg))
-            {
-                ffmpegPath = svpFFmpeg;
-            }
-        }
-
-        // Create temporary video from frames
-        using var tempManager = new TemporaryFileManager();
-        var tempVideoIn = tempManager.GetTempFilePath("rife_temp", ".mp4");
-        var tempVideoOut = tempManager.GetTempFilePath("rife_out", ".mp4");
-
-        // Step 1: Convert frames to video using FFmpeg
-            var framePath = Path.Combine(inputFramesFolder, "frame_%06d.png");
-            var ffmpegArgs = $"-y -framerate 30 -i \"{framePath}\" -c:v libx264 -preset fast -crf 0 -pix_fmt yuv420p \"{tempVideoIn}\"";
-
-            _logger?.LogDebug("Creating temp video from frames: {FfmpegPath} {FfmpegArgs}", ffmpegPath, ffmpegArgs);
-
-            var ffmpegProcess = new SysProcess
-            {
-                StartInfo = new ProcessStartInfo
-                {
-                    FileName = ffmpegPath,
-                    Arguments = ffmpegArgs,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    UseShellExecute = false,
-                    CreateNoWindow = true
-                }
-            };
-
-            var errorOutput = new System.Text.StringBuilder();
-            ffmpegProcess.ErrorDataReceived += (sender, e) =>
-            {
-                if (!string.IsNullOrEmpty(e.Data))
-                {
-                    errorOutput.AppendLine(e.Data);
-                    _logger?.LogDebug("[FFmpeg] {Data}", e.Data);
-                }
-            };
-
-            ffmpegProcess.Start();
-            ffmpegProcess.BeginErrorReadLine();
-
-            var completed = ffmpegProcess.WaitForExit(300000); // 5 minutes
-
-            if (!completed)
-            {
-                _logger?.LogWarning("FFmpeg process timed out after 5 minutes");
-                try { ffmpegProcess.Kill(); } catch { }
-                return false;
-            }
-
-            if (ffmpegProcess.ExitCode != 0 || !File.Exists(tempVideoIn))
-            {
-                _logger?.LogError("FFmpeg failed with exit code: {ExitCode}", ffmpegProcess.ExitCode);
-                _logger?.LogError("FFmpeg error output: {ErrorOutput}", errorOutput);
-                return false;
-            }
-
-            // Step 2: Run RIFE interpolation on the video
-            progress?.Report(30);
-
-            var interpolationSuccess = await InterpolateVideoAsync(
-                tempVideoIn,
-                tempVideoOut,
-                options,
-                new Progress<double>(p => progress?.Report(30 + p * 0.4)),
-                cancellationToken,
-                ffmpegPath);
-
-            if (!interpolationSuccess || !File.Exists(tempVideoOut))
-            {
-                _logger?.LogError("RIFE interpolation failed for frames");
-                return false;
-            }
-
-            // Step 3: Extract frames from interpolated video
-            progress?.Report(70);
-
-            var outputFramePath = Path.Combine(outputFramesFolder, "frame_%06d.png");
-            var extractArgs = $"-y -i \"{tempVideoOut}\" \"{outputFramePath}\"";
-
-            _logger?.LogDebug("Extracting interpolated frames: {FfmpegPath} {ExtractArgs}", ffmpegPath, extractArgs);
-
-            var extractErrorOutput = new System.Text.StringBuilder();
-            var extractProcess = new SysProcess
-            {
-                StartInfo = new ProcessStartInfo
-                {
-                    FileName = ffmpegPath,
-                    Arguments = extractArgs,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    UseShellExecute = false,
-                    CreateNoWindow = true
-                }
-            };
-
-            extractProcess.ErrorDataReceived += (sender, e) =>
-            {
-                if (!string.IsNullOrEmpty(e.Data))
-                {
-                    extractErrorOutput.AppendLine(e.Data);
-                    _logger?.LogDebug("[FFmpeg Extract] {Data}", e.Data);
-                }
-            };
-
-            extractProcess.Start();
-            extractProcess.BeginErrorReadLine();
-
-            var extractCompleted = extractProcess.WaitForExit(300000); // 5 minutes
-
-            if (!extractCompleted)
-            {
-                _logger?.LogWarning("FFmpeg extraction timed out after 5 minutes");
-                try { extractProcess.Kill(); } catch { }
-                return false;
-            }
-
-            if (extractProcess.ExitCode != 0)
-            {
-                _logger?.LogError("FFmpeg extract failed with exit code: {ExitCode}", extractProcess.ExitCode);
-                _logger?.LogError("FFmpeg extract error: {ErrorOutput}", extractErrorOutput);
-                return false;
-            }
-
-            progress?.Report(100);
-
-            // Verify output frames were created
-            var outputFrames = Directory.GetFiles(outputFramesFolder, "*.png");
-            _logger?.LogDebug("Extracted {FrameCount} interpolated frames", outputFrames.Length);
-
-        return outputFrames.Length > 0;
-        // Temp video cleanup handled by TemporaryFileManager.Dispose()
-    }
-
-    /// <summary>
     /// Get all supported RIFE model names (static list of known models).
     /// Use GetAvailableModels() instance method to get actually installed models.
     /// </summary>
-    public static string[] GetSupportedModels()
-    {
-        return
-        [
-            "rife-v4.6",
-            "rife-v4.14",
-            "rife-v4.14-lite",
-            "rife-v4.15",
-            "rife-v4.15-lite",
-            "rife-v4.16",
-            "rife-v4.16-lite",
-            "rife-v4.17",
-            "rife-v4.18",
-            "rife-v4.20",
-            "rife-v4.21",
-            "rife-v4.22",
-            "rife-v4.22-lite",
-            "rife-v4.25",
-            "rife-v4.25-lite",
-            "rife-v4.26",
-            "rife-anime",
-            "rife-UHD"
-        ];
-    }
-
-    /// <summary>
-    /// Find vspipe executable
-    /// </summary>
-    private string? FindVsPipe()
-    {
-        var possiblePaths = new[]
-        {
-            @"C:\Program Files\VapourSynth\core\vspipe.exe",
-            @"C:\Program Files (x86)\VapourSynth\core\vspipe.exe",
-            @"C:\Python311\Scripts\vspipe.exe",
-            @"C:\Python310\Scripts\vspipe.exe",
-            @"C:\Python39\Scripts\vspipe.exe",
-            @"C:\Python38\Scripts\vspipe.exe",
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), @"VapourSynth\core\vspipe.exe"),
-        };
-
-        foreach (var path in possiblePaths)
-        {
-            if (File.Exists(path))
-            {
-                _logger?.LogDebug("Found vspipe at: {Path}", path);
-                return path;
-            }
-        }
-
-        // Try to find in PATH
-        try
-        {
-            var process = new SysProcess
-            {
-                StartInfo = new ProcessStartInfo
-                {
-                    FileName = "vspipe",
-                    Arguments = "--version",
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    UseShellExecute = false,
-                    CreateNoWindow = true
-                }
-            };
-
-            process.Start();
-            process.WaitForExit(2000);
-
-            if (process.ExitCode == 0)
-            {
-                _logger?.LogDebug("Found vspipe in PATH");
-                return "vspipe";
-            }
-        }
-        catch
-        {
-            // vspipe not in PATH
-        }
-
-        _logger?.LogDebug("vspipe not found");
-        return null;
-    }
+    public static string[] GetSupportedModels() => Models.Select(m => m.Name).ToArray();
 
     /// <summary>
     /// Generate a VapourSynth script for SVP RIFE processing.
@@ -863,30 +627,9 @@ public class RifeInterpolationService
         var svpModelPath = Path.Combine(_rifeFolderPath, "models");
         var rifeModelDir = Path.Combine(svpModelPath, "rife");
 
-        // Map model names to (modelId, onnxFilename) - validate file exists before TensorRT compilation
-        // vsmlrt uses integer model IDs: base versions are 3-digit (e.g., 416), lite versions append 1 (e.g., 4161)
-        var (modelId, modelFilename) = options.ModelName switch
-        {
-            "rife-v4.6" => (46, "rife_v4.6.onnx"),
-            "rife-v4.14" => (414, "rife_v4.14.onnx"),
-            "rife-v4.14-lite" => (4141, "rife_v4.14_lite.onnx"),
-            "rife-v4.15" => (415, "rife_v4.15.onnx"),
-            "rife-v4.15-lite" => (4151, "rife_v4.15_lite.onnx"),
-            "rife-v4.16" => (416, "rife_v4.16.onnx"),
-            "rife-v4.16-lite" => (4161, "rife_v4.16_lite.onnx"),
-            "rife-v4.17" => (417, "rife_v4.17.onnx"),
-            "rife-v4.18" => (418, "rife_v4.18.onnx"),
-            "rife-v4.20" => (420, "rife_v4.20.onnx"),
-            "rife-v4.21" => (421, "rife_v4.21.onnx"),
-            "rife-v4.22" => (422, "rife_v4.22.onnx"),
-            "rife-v4.22-lite" => (4221, "rife_v4.22_lite.onnx"),
-            "rife-v4.25" => (425, "rife_v4.25.onnx"),
-            "rife-v4.25-lite" => (4251, "rife_v4.25_lite.onnx"),
-            "rife-v4.26" => (426, "rife_v4.26.onnx"),
-            "rife-UHD" => (49, "rife_v4.9_uhd.onnx"),
-            "rife-anime" => (48, "rife_v4.8_anime.onnx"),
-            _ => (46, "rife_v4.6.onnx")  // Default to v4.6
-        };
+        // Resolve the model from the shared table - validate the file exists before TensorRT compilation
+        var model = Models.FirstOrDefault(m => m.Name == options.ModelName) ?? Models[0]; // Default to v4.6
+        var (modelId, modelFilename) = (model.ModelId, model.OnnxFile);
 
         // Validate model file exists before proceeding (avoids 5-15 min TensorRT failure)
         var modelPath = Path.Combine(rifeModelDir, modelFilename);

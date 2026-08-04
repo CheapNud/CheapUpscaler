@@ -106,11 +106,6 @@ else
                                          Max="4"
                                          HelperText="Usually 1 (GPU limited)" />
 
-                        <MudSwitch T="bool"
-                                   @bind-Value="_settings.Queue.AutoStartQueue"
-                                   Label="Auto-start queue when jobs are added"
-                                   Color="Color.Primary" />
-
                         <MudStack Row="true" Spacing="2">
                             <MudTextField @bind-Value="_settings.Queue.DefaultOutputDirectory"
                                           Label="Default Output Directory"
@@ -142,11 +137,6 @@ else
                         <MudSwitch T="bool"
                                    @bind-Value="_settings.Ui.ShowCompletionNotifications"
                                    Label="Show completion notifications"
-                                   Color="Color.Primary" />
-
-                        <MudSwitch T="bool"
-                                   @bind-Value="_settings.Ui.PlayCompletionSound"
-                                   Label="Play sound on completion"
                                    Color="Color.Primary" />
                     </MudStack>
                 </MudPaper>
@@ -242,8 +232,9 @@ else
                             <MudNumericField T="int"
                                              @bind-Value="_settings.DefaultSettings.RealEsrgan.TileSize"
                                              Label="Default Tile Size"
+                                             HelperText="0 = Auto (VRAM-based)"
                                              Variant="Variant.Outlined"
-                                             Min="128"
+                                             Min="0"
                                              Max="1024"
                                              Step="64" />
 

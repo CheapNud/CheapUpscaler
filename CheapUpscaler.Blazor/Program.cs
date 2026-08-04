@@ -46,7 +46,14 @@ class Program
         builder.Services.AddSingleton<IDependencyChecker>(sp => sp.GetRequiredService<DependencyChecker>());
         builder.Services.AddSingleton<ISettingsService, SettingsService>();
         builder.Services.AddSingleton<IUpscaleProcessor, UpscaleProcessorService>();
-        builder.Services.AddSingleton<IVideoInfoService, VideoInfoService>();
+        // Shared video metadata service, resolving ffmpeg through desktop (SVP-aware) detection
+        builder.Services.AddSingleton<IVideoInfoService>(sp =>
+        {
+            var executableDetection = sp.GetRequiredService<ExecutableDetectionService>();
+            return new VideoInfoService(
+                sp.GetRequiredService<ILogger<VideoInfoService>>(),
+                () => executableDetection.DetectFFmpeg(useSvpEncoders: false, customPath: null));
+        });
 
         // Register platform-specific services for Components
         builder.Services.AddScoped<IFileDialogService, DesktopFileDialogService>();

@@ -128,16 +128,17 @@ public static class ServiceCollectionExtensions
     /// </summary>
     private static RifeInterpolationService CreateRifeService(IServiceProvider serviceProvider)
     {
+        var environment = serviceProvider.GetService<IVapourSynthEnvironment>();
 #if WINDOWS
         var svpDetection = serviceProvider.GetRequiredService<SvpDetectionService>();
         var (rifePath, pythonPath) = ResolveRifePaths(null, null, svpDetection);
-        return new RifeInterpolationService(rifePath, pythonPath);
+        return new RifeInterpolationService(rifePath, pythonPath, environment: environment);
 #else
         // On Linux, RIFE paths must be configured via environment or config
         // SVP is Windows-only, so we use empty paths (RIFE unavailable without config)
         var logger = serviceProvider.GetService<ILogger<RifeInterpolationService>>();
         logger?.LogWarning("[RIFE] Linux detected - RIFE paths must be configured manually. SVP is Windows-only.");
-        return new RifeInterpolationService("", "");
+        return new RifeInterpolationService("", "", logger, environment);
 #endif
     }
 

@@ -28,6 +28,9 @@
 
 ## Blocking
 
+- [ ] (2026-08-05) Big runtime testing round — all architecture-fix waves are compile-verified only [user]
+  - One job per processor type (RIFE/CUGAN/ESRGAN/NonAI) with an audio-bearing source; verify audio/subs in output, NVENC pickup, scene detection, colors on SD content, queue pause/cancel/concurrency
+  - Delete pre-migration .db files first (EnsureCreated-era DBs have no migrations history — Migrate() throws)
 - [x] (2026-08-04 → 2026-08-04) Queue deadlocks on startup when >100 pending jobs exist [audit]
   - InitializeAsync enqueues into bounded Channel(100, FullMode.Wait) before the consumer loop starts; item 101 blocks forever, service silently never runs
   - Same bounded write with no CancellationToken can hang POST /api/jobs and the Blazor circuit after the row is committed
@@ -48,8 +51,8 @@
 
 ## Planned
 
-- [ ] (2026-08-04) Consolidate remaining service twins: VideoInfoService/WorkerVideoInfoService (identical except ffmpeg path lookup) and the two DependencyChecker GetFFmpegVersion copies [audit]
-- [ ] (2026-08-04) Expose "Auto" tile size in the ESRGAN settings UI (engine supports TileSize<=0 since the VRAM ladder; dropdown lacks the option) [audit]
+- [x] (2026-08-04 → 2026-08-05) Consolidate remaining service twins: VideoInfoService/WorkerVideoInfoService (identical except ffmpeg path lookup) and the two DependencyChecker GetFFmpegVersion copies [audit]
+- [x] (2026-08-04 → 2026-08-05) Expose "Auto" tile size in the ESRGAN settings UI (engine supports TileSize<=0 since the VRAM ladder; dropdown lacks the option) [audit]
 - [ ] (2026-08-04) Decide UhdMode on SVP path: currently documented no-op; wiring it to vsmlrt scale=0.5 is the real 4K optimization but changes behavior [audit]
 - [x] (2026-08-04 → 2026-08-04) Consolidate the duplicated queue engine into Shared [audit]
   - WorkerQueueService (516 lines) and UpscaleQueueService (422) are ~90% identical and have already drifted (cancellation, auto-pause, forced 60fps); one class + a single IJobProcessor interface, hosts keep only their processor impl
@@ -79,11 +82,11 @@
 - [x] (2026-08-04 → 2026-08-04) File watcher robustness [audit]
   - async void Created/Renamed handlers can take down the process; restart double-queues existing files (checks in-memory cache racing InitializeAsync — query the repository instead); shutdown cleanup unreachable
 - [x] (2026-08-04 → 2026-08-04) docker-compose mounts input :ro so every upload fails; UI fixes: desktop Download button navigates Photino to a 404 (Worker-only endpoint), generated output filename goes stale when type/settings change after load [bug]
-- [ ] (2026-08-04) Wire hardware encoding (NVENC) into output encode — detected and displayed but every pipeline hardcodes libx264 [audit]
+- [x] (2026-08-04 → 2026-08-05) Wire hardware encoding (NVENC) into output encode — detected and displayed but every pipeline hardcodes libx264 [audit]
   - Unused RifePipelineOptions/FFmpegRenderSettings are the ready-made home
   - Add raw `key=value` encoder-option passthrough instead of wrapping every ffmpeg flag
 - [x] (2026-08-04 → 2026-08-04) Persist source/output video metadata — columns exist on UpscaleJob but UpscaleJobEntity never maps them, silently null after DB round-trip [bug]
-- [ ] (2026-08-04) Dead-code sweep [audit]
+- [x] (2026-08-04 → 2026-08-05) Dead-code sweep [audit]
   - IUpscaleService/IRifeService/RifePipelineOptions/InterpolateFramesAsync (zero callers), AutoStartQueue/PlayCompletionSound/MaxRetries/DarkMode/DefaultSettings section (never read), EstimatedTimeRemaining (never computed)
   - Consolidate RIFE's three parallel model tables; route RIFE through IVapourSynthEnvironment instead of its private duplicate detection; Real-CUGAN Linux crash (os.environ['APPDATA'] KeyError)
 - [x] (2026-08-04 → 2026-08-04) Scene-cut detection before RIFE interpolation — cheap frame-diff; above threshold duplicate frame instead of interpolating (prevents ghosting across cuts) [plan]
@@ -97,6 +100,7 @@
 
 ## Future
 
+- [ ] (2026-08-05) Per-job encoder settings (codec/quality/preset) + raw key=value ffmpeg passthrough — NVENC auto-selection shipped, this is the configurable upgrade [plan]
 - [ ] (2026-08-04) Live preview of in-flight jobs — tee encoder output as fragmented MP4, stream to a video element in the UI [user]
 - [ ] (2026-08-04) Preset system as ordered stage lists with composition rules (restore→upscale→interpolate) instead of monolithic setting blobs; ship GPU-tier preset tables [plan]
 - [ ] (2026-08-04) Anime4K shader support via ffmpeg libplacebo `custom_shader_path` — lowest priority [plan]

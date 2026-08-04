@@ -1,4 +1,6 @@
 @inherits LayoutComponentBase
+@using System.Diagnostics
+@inject ISettingsService SettingsService
 
 <MudThemeProvider @bind-IsDarkMode="@_isDarkMode" />
 <MudPopoverProvider />
@@ -38,13 +40,29 @@
     private bool _drawerOpen = true;
     private bool _isDarkMode = true;
 
+    protected override void OnInitialized()
+    {
+        _isDarkMode = SettingsService.Settings.Ui.DarkMode;
+    }
+
     private void ToggleDrawer()
     {
         _drawerOpen = !_drawerOpen;
     }
 
-    private void ToggleDarkMode()
+    private async Task ToggleDarkMode()
     {
         _isDarkMode = !_isDarkMode;
+        SettingsService.Settings.Ui.DarkMode = _isDarkMode;
+
+        try
+        {
+            await SettingsService.SaveAsync();
+        }
+        catch (Exception ex)
+        {
+            // Theme still flips for this session - persistence failure is not worth blocking the UI
+            Debug.WriteLine($"Failed to persist dark mode: {ex.Message}");
+        }
     }
 }

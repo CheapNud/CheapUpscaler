@@ -1,3 +1,5 @@
+@using CheapUpscaler.Core.Models
+
 <MudStack Spacing="3">
     <MudText Typo="Typo.subtitle2" Color="Color.Primary">Real-ESRGAN Settings (General Content)</MudText>
 
@@ -23,15 +25,17 @@
         <MudSelectItem Value="4">4x</MudSelectItem>
     </MudSelect>
 
-    <MudNumericField T="int"
-                     Value="Settings.TileSize"
-                     ValueChanged="@(v => UpdateSettings(s => s.TileSize = v))"
-                     Label="Tile Size"
-                     Variant="Variant.Outlined"
-                     Min="128"
-                     Max="1024"
-                     Step="64"
-                     HelperText="Smaller = less VRAM, larger = faster (if VRAM allows)" />
+    <MudSelect T="int"
+               Value="Settings.TileSize"
+               ValueChanged="@(v => UpdateSettings(s => s.TileSize = v))"
+               Label="Tile Size"
+               Variant="Variant.Outlined"
+               HelperText="Smaller = less VRAM, larger = faster (if VRAM allows)">
+        @foreach (var tileSize in RealEsrganOptions.GetAvailableTileSizes())
+        {
+            <MudSelectItem Value="@tileSize">@(tileSize <= 0 ? "Auto (VRAM-based)" : $"{tileSize}px")</MudSelectItem>
+        }
+    </MudSelect>
 
     <MudSwitch T="bool"
                Value="Settings.UseFp16"

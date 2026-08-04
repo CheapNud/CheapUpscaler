@@ -4,6 +4,7 @@ using CheapUpscaler.Components.Models;
 using CheapUpscaler.Components.Services;
 using CheapUpscaler.Core.Services.VapourSynth;
 using CheapUpscaler.Core.Services.RIFE;
+using CheapUpscaler.Shared.Services;
 using CheapHelpers.MediaProcessing.Services;
 
 namespace CheapUpscaler.Blazor.Services;
@@ -134,7 +135,7 @@ public class DependencyChecker(
             if (info.IsInstalled)
             {
                 // Try to get version
-                info.Version = GetFFmpegVersion(ffmpegPath!);
+                info.Version = ToolProbe.GetFFmpegVersion(ffmpegPath!);
             }
         }
         catch (Exception ex)
@@ -356,44 +357,6 @@ public class DependencyChecker(
         }
 
         return Task.FromResult(info);
-    }
-
-    private static string? GetFFmpegVersion(string ffmpegPath)
-    {
-        try
-        {
-            var startInfo = new ProcessStartInfo
-            {
-                FileName = ffmpegPath,
-                Arguments = "-version",
-                RedirectStandardOutput = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
-
-            using var process = Process.Start(startInfo);
-            if (process == null) return null;
-
-            var output = process.StandardOutput.ReadLine();
-
-            if (!process.WaitForExit(5000))
-            {
-                try { process.Kill(); } catch { }
-            }
-
-            // Parse version from "ffmpeg version N.N.N ..."
-            if (output != null)
-            {
-                var match = Regex.Match(output, @"version\s+(\S+)");
-                if (match.Success) return match.Groups[1].Value;
-            }
-
-            return null;
-        }
-        catch
-        {
-            return null;
-        }
     }
 
     /// <summary>

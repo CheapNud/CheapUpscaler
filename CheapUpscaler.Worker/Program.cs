@@ -81,7 +81,9 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<UpscaleQueueServic
 
 // Component services (Settings, VideoInfo, DependencyChecker, Hardware)
 builder.Services.AddSingleton<ISettingsService, WorkerSettingsService>();
-builder.Services.AddSingleton<IVideoInfoService, WorkerVideoInfoService>();
+// Shared video metadata service - no host resolver, ToolProbe/PATH detection is right for Docker
+builder.Services.AddSingleton<IVideoInfoService>(sp =>
+    new VideoInfoService(sp.GetRequiredService<ILogger<VideoInfoService>>()));
 builder.Services.AddSingleton<IDependencyChecker, WorkerDependencyChecker>();
 builder.Services.AddSingleton<IHardwareService, WorkerHardwareService>();
 
