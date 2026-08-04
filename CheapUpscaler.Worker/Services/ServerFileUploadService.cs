@@ -20,7 +20,7 @@ public class ServerFileUploadService(IConfiguration configuration, ILogger<Serve
 
     public bool SupportsUpload => true;
 
-    public long MaxFileSizeBytes => 10L * 1024 * 1024 * 1024; // 10 GB
+    public long MaxFileSizeBytes => 50L * 1024 * 1024 * 1024; // 50 GB (BDRemux/4K sources can be massive)
 
     public string[] AllowedExtensions => ["mp4", "mkv", "avi", "mov", "webm", "wmv", "flv"];
 

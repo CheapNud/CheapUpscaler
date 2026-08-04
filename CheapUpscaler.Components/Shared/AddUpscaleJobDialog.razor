@@ -4,6 +4,7 @@
 @inject IDialogService DialogService
 @inject ISnackbar Snackbar
 @inject IVideoInfoService VideoInfoService
+@inject ISettingsService SettingsService
 
 <MudDialog>
     <TitleContent>
@@ -380,7 +381,11 @@
     {
         if (string.IsNullOrEmpty(_sourcePath)) return;
 
-        var directory = Path.GetDirectoryName(_sourcePath) ?? "";
+        // Use configured output directory instead of input directory to prevent accidental overwrites
+        var directory = SettingsService.Settings.Queue.DefaultOutputDirectory;
+        if (string.IsNullOrWhiteSpace(directory))
+            directory = Path.GetDirectoryName(_sourcePath) ?? "";
+
         var fileName = Path.GetFileNameWithoutExtension(_sourcePath);
         var extension = Path.GetExtension(_sourcePath);
 

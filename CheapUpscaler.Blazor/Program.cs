@@ -61,7 +61,7 @@ class Program
         var dbPath = Path.Combine(dbDirectory, "upscaler.db");
 
         builder.Services.AddDbContextFactory<UpscaleJobDbContext>(options =>
-            options.UseSqlite($"Data Source={dbPath}"));
+            options.UseSqlite($"Data Source={dbPath};Cache=Shared"));
         builder.Services.AddSingleton<IUpscaleJobRepository, UpscaleJobRepository>();
 
         // Register queue infrastructure
@@ -85,7 +85,7 @@ class Program
     private static void EnsureDatabaseCreated(string dbPath)
     {
         var options = new DbContextOptionsBuilder<UpscaleJobDbContext>()
-            .UseSqlite($"Data Source={dbPath}")
+            .UseSqlite($"Data Source={dbPath};Cache=Shared")
             .Options;
 
         using var context = new UpscaleJobDbContext(options);
