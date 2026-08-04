@@ -28,10 +28,22 @@
 
 ## Blocking
 
-_Nothing blocking._
+- [ ] (2026-08-04) Audio track lost on ALL AI-upscaled output (RIFE/RealCUGAN/RealESRGAN) [bug]
+  - vspipe→ffmpeg pipelines never mux the source back in; add second input + `-map 0:v -map 1:a? -c:a copy`, same for subtitles
+  - Also copy color metadata (range/primaries/trc) from source — currently lost
+- [ ] (2026-08-04) Pause doesn't pause — status flips to Paused but vspipe/ffmpeg keep running; completion handler then never updates a Paused job, stuck forever [bug]
+  - Resume equally broken (flips to Pending, nothing re-queues). Fix properly or remove the buttons
+- [ ] (2026-08-04) RealCUGAN cancellation never kills child processes — RIFE/ESRGAN register graceful shutdown, CUGAN doesn't [bug]
 
 ## Planned
 
+- [ ] (2026-08-04) Wire hardware encoding (NVENC) into output encode — detected and displayed but every pipeline hardcodes libx264 [audit]
+  - Unused RifePipelineOptions/FFmpegRenderSettings are the ready-made home
+  - Add raw `key=value` encoder-option passthrough instead of wrapping every ffmpeg flag
+- [ ] (2026-08-04) Persist source/output video metadata — columns exist on UpscaleJob but UpscaleJobEntity never maps them, silently null after DB round-trip [bug]
+- [ ] (2026-08-04) Dead-code sweep: IUpscaleService/IRifeService (zero implementations), AutoStartQueue/PlayCompletionSound/MaxRetries (never read), EstimatedTimeRemaining (never computed) [audit]
+- [ ] (2026-08-04) Scene-cut detection before RIFE interpolation — cheap frame-diff; above threshold duplicate frame instead of interpolating (prevents ghosting across cuts) [plan]
+- [ ] (2026-08-04) Auto tile size from queried VRAM budget instead of user-configured [plan]
 - [ ] (2026-08-04) Removable drive workflow — process from/to a plugged-in USB stick or external SSD [user]
   - One large job or a big batch of small ones; output lands back on the drive
   - Overlaps with batch processing (Future) — likely built together
@@ -41,6 +53,11 @@ _Nothing blocking._
 
 ## Future
 
+- [ ] (2026-08-04) Live preview of in-flight jobs — tee encoder output as fragmented MP4, stream to a video element in the UI [user]
+- [ ] (2026-08-04) Preset system as ordered stage lists with composition rules (restore→upscale→interpolate) instead of monolithic setting blobs; ship GPU-tier preset tables [plan]
+- [ ] (2026-08-04) Anime4K shader support via ffmpeg libplacebo `custom_shader_path` — lowest priority [plan]
+  - Fast/weak-GPU/preview tier; requires Vulkan (Docker image lacks graphics capability; verify local ffmpeg has libplacebo)
+  - vs-placebo route has an open bug breaking offline encode — use the ffmpeg path
 - [ ] (2026-08-04) Remote worker push — desktop client sends jobs to a Worker on another machine [user]
   - Upload → enqueue → poll → download result; local vs remote is a per-job choice
   - Same Worker binary regardless of host: Docker on Linux, native win-x64 service on Windows (no WSL2 — multi-GB file I/O)
