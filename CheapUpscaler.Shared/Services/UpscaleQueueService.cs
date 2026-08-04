@@ -92,20 +92,22 @@ public class UpscaleQueueService(
         }
 
         // Signal the running process, if any. The processing task writes the terminal status itself.
-        if (_jobCancellations.TryRemove(jobId, out var cts))
+        // Ownership: ProcessJobAsync created the CTS and is the only disposer - we only signal it.
+        // ObjectDisposedException means the job finished between our lookup and the cancel; that's a no-op.
+        if (_jobCancellations.TryGetValue(jobId, out var cts))
         {
             try
             {
                 await cts.CancelAsync();
                 logger.LogDebug("Cancellation token triggered for job {JobId}", jobId);
             }
+            catch (ObjectDisposedException)
+            {
+                // Job completed concurrently - nothing left to cancel
+            }
             catch (Exception ex)
             {
                 logger.LogWarning(ex, "Error cancelling job {JobId} token", jobId);
-            }
-            finally
-            {
-                cts.Dispose();
             }
         }
 
@@ -407,7 +409,9 @@ public class UpscaleQueueService(
 
         // Job-specific token, linked to the service's stopping token, so CancelJobAsync
         // can kill this job without touching the rest of the queue.
-        using var jobCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        // Single owner: this method creates AND disposes the CTS (in finally, after removal
+        // from the registry) - CancelJobAsync only signals, never disposes.
+        var jobCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         _jobCancellations[jobId] = jobCts;
         var jobToken = jobCts.Token;
 
@@ -492,7 +496,9 @@ public class UpscaleQueueService(
         }
         finally
         {
+            // Remove from the registry first, then dispose - we are the sole owner
             _jobCancellations.TryRemove(jobId, out _);
+            jobCts.Dispose();
 
             job.ProcessId = null;
             job.LastUpdatedAt = DateTime.UtcNow;
