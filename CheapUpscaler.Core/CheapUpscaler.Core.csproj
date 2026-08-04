@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <!-- Multi-target for cross-platform support -->
-    <TargetFrameworks>net10.0;net10.0-windows</TargetFrameworks>
+    <TargetFrameworks>net11.0;net11.0-windows</TargetFrameworks>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
 
@@ -11,18 +11,18 @@
     <NoWarn>$(NoWarn);CA1416</NoWarn>
 
     <!-- Define WINDOWS constant for Windows target -->
-    <DefineConstants Condition="'$(TargetFramework)' == 'net10.0-windows'">$(DefineConstants);WINDOWS</DefineConstants>
+    <DefineConstants Condition="'$(TargetFramework)' == 'net11.0-windows'">$(DefineConstants);WINDOWS</DefineConstants>
   </PropertyGroup>
 
   <ItemGroup>
     <!-- DI extension -->
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.3" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.10" />
     <!-- FFmpeg integration -->
     <PackageReference Include="FFMpegCore" Version="5.4.0" />
     <!-- Media processing shared library -->
-    <PackageReference Include="CheapHelpers.MediaProcessing" Version="2.1.0" />
+    <PackageReference Include="CheapHelpers.MediaProcessing" Version="3.7.0" />
     <!-- Logging abstractions for ILogger -->
-    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.3" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.10" />
   </ItemGroup>
 
   <ItemGroup>
