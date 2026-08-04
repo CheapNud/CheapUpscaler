@@ -28,6 +28,17 @@
 
 ## Blocking
 
+- [ ] (2026-08-04) Queue deadlocks on startup when >100 pending jobs exist [audit]
+  - InitializeAsync enqueues into bounded Channel(100, FullMode.Wait) before the consumer loop starts; item 101 blocks forever, service silently never runs
+  - Same bounded write with no CancellationToken can hang POST /api/jobs and the Blazor circuit after the row is committed
+- [ ] (2026-08-04) Headless Worker never processes anything without a human [audit]
+  - Queue boots paused, only the UI Start button unpauses, and CheckAndAutoPauseQueueAsync re-pauses after every drain; AutoStartQueue setting read by nobody
+  - No queue start/stop/pause REST endpoints — the Blazor UI is the only control plane
+- [ ] (2026-08-04) Desktop Cancel doesn't cancel — UpscaleQueueService has no per-job CancellationTokenSource registry (Worker twin has one); ffmpeg/vspipe keep running after UI says Cancelled [audit]
+- [ ] (2026-08-04) Generated VapourSynth scripts break on real-world paths [audit]
+  - Paths interpolated as r'{path}' in all three AI script generators: any apostrophe in a filename = Python syntax error
+- [ ] (2026-08-04) Hardcoded BT.709 color matrix corrupts SD and HDR content [audit]
+  - matrix_in_s='709' both directions in all AI scripts: BT.601 SD shifts color, BT.2020/HDR mangled and crushed to 8-bit; derive from source props instead
 - [ ] (2026-08-04) Audio track lost on ALL AI-upscaled output (RIFE/RealCUGAN/RealESRGAN) [bug]
   - vspipe→ffmpeg pipelines never mux the source back in; add second input + `-map 0:v -map 1:a? -c:a copy`, same for subtitles
   - Also copy color metadata (range/primaries/trc) from source — currently lost
@@ -37,11 +48,41 @@
 
 ## Planned
 
+- [ ] (2026-08-04) Consolidate the duplicated queue engine into Shared [audit]
+  - WorkerQueueService (516 lines) and UpscaleQueueService (422) are ~90% identical and have already drifted (cancellation, auto-pause, forced 60fps); one class + a single IJobProcessor interface, hosts keep only their processor impl
+  - Same treatment for VideoInfoService/WorkerVideoInfoService twins and the dependency-checker GetFFmpegVersion drift (Worker copy lost its timeout kill, leaks hung processes)
+  - Move IUpscaleQueueService, ISettingsService, AppSettings out of the MudBlazor Components project into Shared
+- [ ] (2026-08-04) Job-settings DTOs defined three times with drifted defaults [audit]
+  - Nested classes in AddUpscaleJobDialog (consumed by services via using static), separate records in WorkerProcessorService: ESRGAN defaults differ (x4plus/512 vs x4plus-anime/0)
+  - Move to Shared, wire both processors through UpscaleJob.GetSettings<T> (currently dead code); shared JsonSerializerOptions with PropertyNameCaseInsensitive
+- [ ] (2026-08-04) Adopt EF migrations — EnsureCreated freezes the schema [audit]
+  - Blocks every column addition (metadata columns, JobName which exists on the model but not the entity); add Initial migration, switch both hosts to Database.Migrate()
+  - UpscaleJobEntity.UpdateFrom drops SourceVideoPath/OutputPath/UpscaleType/SettingsJson — post-insert edits never persist; derive from one field list
+- [ ] (2026-08-04) Pipeline process lifecycle hardening in Core [audit]
+  - Orphaned GPU processes: on mid-pipeline failure nothing kills vspipe/ffmpeg (kill handlers only fire on cancellation) — add try/finally kill
+  - Progress only works for ESRGAN: RIFE reads \n-lines but vspipe emits \r updates; CUGAN vspipe call is missing -p entirely
+  - RIFE test-run blocks a thread up to 20 min with sync WaitForExit; constructors spawn python probes; silent except:pass hides plugin load failures
+- [ ] (2026-08-04) Worker API trust boundary for remote clients [audit]
+  - Client-supplied absolute OutputPath goes straight to ffmpeg (can overwrite the job DB); path allowlist uses raw StartsWith (/data/input-backup passes as /data/input)
+  - SettingsJson stored verbatim, deserialized case-sensitively with silent fallback to defaults — wrong-cased fields run the wrong model and report success; validate at POST with 400
+  - Remote push needs POST /api/files upload + token flow: CreateJob currently requires the input path to exist on the worker filesystem
+- [ ] (2026-08-04) Queue semantics: MaxConcurrentJobs does nothing and pause blocks the queue [audit]
+  - Serial dequeue loop awaits each job so the semaphore never contends; pause spins inside the loop after dequeue, so one paused job jams everything behind it
+- [ ] (2026-08-04) Settings layer fixes [audit]
+  - Settings page edits the live singleton by reference (every keystroke applies pre-Save); desktop SettingsService never loads at startup so ToolPaths overrides are always ignored (captive transient in singleton processor)
+  - Worker LoadAsync drops the config-seeded DefaultOutputDirectory (regression of the output-path fix); two hosts serialize AppSettings with incompatible naming policies
+- [ ] (2026-08-04) Platform registration by TFM instead of runtime OS [audit]
+  - #if WINDOWS in AddPlatformServices means the net11.0 Worker on Windows gets Linux paths/locators; switch to RuntimeInformation checks; AddPlatformServices registered twice; IPlatformPaths registered but injected nowhere
+- [ ] (2026-08-04) File watcher robustness [audit]
+  - async void Created/Renamed handlers can take down the process; restart double-queues existing files (checks in-memory cache racing InitializeAsync — query the repository instead); shutdown cleanup unreachable
+- [ ] (2026-08-04) docker-compose mounts input :ro so every upload fails; UI fixes: desktop Download button navigates Photino to a 404 (Worker-only endpoint), generated output filename goes stale when type/settings change after load [bug]
 - [ ] (2026-08-04) Wire hardware encoding (NVENC) into output encode — detected and displayed but every pipeline hardcodes libx264 [audit]
   - Unused RifePipelineOptions/FFmpegRenderSettings are the ready-made home
   - Add raw `key=value` encoder-option passthrough instead of wrapping every ffmpeg flag
 - [ ] (2026-08-04) Persist source/output video metadata — columns exist on UpscaleJob but UpscaleJobEntity never maps them, silently null after DB round-trip [bug]
-- [ ] (2026-08-04) Dead-code sweep: IUpscaleService/IRifeService (zero implementations), AutoStartQueue/PlayCompletionSound/MaxRetries (never read), EstimatedTimeRemaining (never computed) [audit]
+- [ ] (2026-08-04) Dead-code sweep [audit]
+  - IUpscaleService/IRifeService/RifePipelineOptions/InterpolateFramesAsync (zero callers), AutoStartQueue/PlayCompletionSound/MaxRetries/DarkMode/DefaultSettings section (never read), EstimatedTimeRemaining (never computed)
+  - Consolidate RIFE's three parallel model tables; route RIFE through IVapourSynthEnvironment instead of its private duplicate detection; Real-CUGAN Linux crash (os.environ['APPDATA'] KeyError)
 - [ ] (2026-08-04) Scene-cut detection before RIFE interpolation — cheap frame-diff; above threshold duplicate frame instead of interpolating (prevents ghosting across cuts) [plan]
 - [ ] (2026-08-04) Auto tile size from queried VRAM budget instead of user-configured [plan]
 - [ ] (2026-08-04) Removable drive workflow — process from/to a plugged-in USB stick or external SSD [user]
