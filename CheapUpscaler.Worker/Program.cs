@@ -50,10 +50,7 @@ builder.Services.AddOpenApi();
 // CheapHelpers.MediaProcessing services (platform-aware)
 builder.Services.AddMediaProcessing();
 
-// Platform-specific services (auto-detects Windows vs Linux)
-builder.Services.AddPlatformServices();
-
-// Core upscaler services
+// Core upscaler services (also registers platform-specific services)
 builder.Services.AddUpscalerServices();
 
 // Configure database path
@@ -97,12 +94,12 @@ builder.Services.Configure<HostOptions>(options =>
 
 var app = builder.Build();
 
-// Ensure database is created
+// Apply pending migrations (creates the database on first run)
 using (var scope = app.Services.CreateScope())
 {
     var factory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<UpscaleJobDbContext>>();
     using var context = factory.CreateDbContext();
-    context.Database.EnsureCreated();
+    context.Database.Migrate();
 }
 
 // Configure middleware

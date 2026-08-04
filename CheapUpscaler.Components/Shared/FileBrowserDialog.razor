@@ -12,15 +12,17 @@
         <MudStack Spacing="2" Style="min-width: 500px; min-height: 400px;">
             <!-- Path breadcrumb and navigation -->
             <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center">
-                <MudIconButton Icon="@Icons.Material.Filled.ArrowUpward"
-                               OnClick="NavigateUp"
-                               Disabled="@(string.IsNullOrEmpty(_currentResult?.ParentPath))"
-                               Size="Size.Small"
-                               Title="Go to parent folder" />
-                <MudIconButton Icon="@Icons.Material.Filled.Refresh"
-                               OnClick="@(() => LoadDirectory(_currentPath))"
-                               Size="Size.Small"
-                               Title="Refresh" />
+                <MudTooltip Text="Go to parent folder">
+                    <MudIconButton Icon="@Icons.Material.Filled.ArrowUpward"
+                                   OnClick="NavigateUp"
+                                   Disabled="@(string.IsNullOrEmpty(_currentResult?.ParentPath))"
+                                   Size="Size.Small" />
+                </MudTooltip>
+                <MudTooltip Text="Refresh">
+                    <MudIconButton Icon="@Icons.Material.Filled.Refresh"
+                                   OnClick="@(() => LoadDirectory(_currentPath))"
+                                   Size="Size.Small" />
+                </MudTooltip>
                 <MudTextField @bind-Value="_currentPath"
                               Variant="Variant.Outlined"
                               Margin="Margin.Dense"
@@ -76,9 +78,10 @@
                     {
                         <MudListItem T="FileBrowserItem"
                                      OnClick="@(() => OnItemClick(item))"
-                                     OnDoubleClick="@(() => OnItemDoubleClick(item))"
                                      Class="@GetItemClass(item)">
-                            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Style="width: 100%;">
+                            @* MudListItem has no OnDoubleClick parameter - handle dblclick on the item content instead *@
+                            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Style="width: 100%;"
+                                      @ondblclick="@(() => OnItemDoubleClick(item))">
                                 <MudIcon Icon="@GetItemIcon(item)"
                                          Color="@(item.IsDirectory ? Color.Warning : Color.Default)"
                                          Size="Size.Small" />

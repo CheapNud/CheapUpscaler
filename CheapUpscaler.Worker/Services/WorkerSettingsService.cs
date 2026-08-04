@@ -11,6 +11,7 @@ namespace CheapUpscaler.Worker.Services;
 public class WorkerSettingsService : ISettingsService
 {
     private readonly string _settingsPath;
+    private readonly string? _configuredOutputPath;
     private AppSettings _settings = new();
 
     public event Action? SettingsChanged;
@@ -24,7 +25,7 @@ public class WorkerSettingsService : ISettingsService
         Directory.CreateDirectory(dataPath);
         _settingsPath = Path.Combine(dataPath, "worker-settings.json");
 
-        var configuredOutputPath = configuration["Worker:OutputPath"];
+        _configuredOutputPath = configuration["Worker:OutputPath"];
 
         // Load settings synchronously in constructor
         if (File.Exists(_settingsPath))
@@ -32,7 +33,7 @@ public class WorkerSettingsService : ISettingsService
             try
             {
                 var json = File.ReadAllText(_settingsPath);
-                _settings = JsonSerializer.Deserialize<AppSettings>(json) ?? new AppSettings();
+                _settings = JsonSerializer.Deserialize<AppSettings>(json, AppSettings.JsonOptions) ?? new AppSettings();
             }
             catch
             {
@@ -40,10 +41,18 @@ public class WorkerSettingsService : ISettingsService
             }
         }
 
-        // Default output directory from config if not explicitly set in user settings
-        if (string.IsNullOrWhiteSpace(_settings.Queue.DefaultOutputDirectory) && !string.IsNullOrWhiteSpace(configuredOutputPath))
+        ApplyConfigDefaults(_settings);
+    }
+
+    /// <summary>
+    /// Fills settings that come from configuration when the user has not set them explicitly.
+    /// Applied on every load, otherwise a reload would drop the config-seeded values.
+    /// </summary>
+    private void ApplyConfigDefaults(AppSettings settings)
+    {
+        if (string.IsNullOrWhiteSpace(settings.Queue.DefaultOutputDirectory) && !string.IsNullOrWhiteSpace(_configuredOutputPath))
         {
-            _settings.Queue.DefaultOutputDirectory = configuredOutputPath;
+            settings.Queue.DefaultOutputDirectory = _configuredOutputPath;
         }
     }
 
@@ -54,7 +63,7 @@ public class WorkerSettingsService : ISettingsService
             try
             {
                 var json = await File.ReadAllTextAsync(_settingsPath);
-                _settings = JsonSerializer.Deserialize<AppSettings>(json) ?? new AppSettings();
+                _settings = JsonSerializer.Deserialize<AppSettings>(json, AppSettings.JsonOptions) ?? new AppSettings();
             }
             catch
             {
@@ -65,6 +74,8 @@ public class WorkerSettingsService : ISettingsService
         {
             _settings = new AppSettings();
         }
+
+        ApplyConfigDefaults(_settings);
 
         SettingsChanged?.Invoke();
         return _settings;
@@ -78,7 +89,7 @@ public class WorkerSettingsService : ISettingsService
     public async Task SaveAsync(AppSettings settings)
     {
         _settings = settings;
-        var json = JsonSerializer.Serialize(settings, new JsonSerializerOptions { WriteIndented = true });
+        var json = JsonSerializer.Serialize(settings, AppSettings.JsonOptions);
         await File.WriteAllTextAsync(_settingsPath, json);
         SettingsChanged?.Invoke();
     }

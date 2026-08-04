@@ -16,6 +16,12 @@
     <!-- Transitive pin: EF Sqlite pulls vulnerable 2.1.11 (GHSA-2m69-gcr7-jv3q) -->
     <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="2.1.12" />
 
+    <!-- Design-time support for dotnet ef migrations -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.10">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+
     <!-- Logging abstractions -->
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.10" />
 

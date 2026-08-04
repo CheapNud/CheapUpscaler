@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 using CheapHelpers.MediaProcessing.Services.Utilities;
+using CheapUpscaler.Core.Services.VapourSynth;
 using Microsoft.Extensions.Logging;
 
 namespace CheapUpscaler.Core.Services.RIFE;
@@ -276,7 +277,7 @@ public class RifeInterpolationService
         if (IsSvpRife)
         {
             // Check for SVP RIFE files
-            var requiredFiles = new[] { "rife.dll", "rife_vs.dll", "vsmirt.py", "vstrt.dll" };
+            var requiredFiles = new[] { "rife.dll", "rife_vs.dll", "vsmlrt.py", "vstrt.dll" };
             var foundAny = requiredFiles.Any(f => File.Exists(Path.Combine(_rifeFolderPath, f)));
 
             if (!foundAny)
@@ -388,14 +389,17 @@ public class RifeInterpolationService
                             }
                         }, cancellationToken);
 
-                        // Wait up to 20 minutes for TensorRT to compile on first run
-                        var timeoutMs = 20 * 60 * 1000; // 20 minutes
-                        var completed = test.WaitForExit(timeoutMs);
-
-                        if (!completed)
+                        // Wait up to 20 minutes for TensorRT to compile on first run (async - never block a threadpool thread)
+                        using var testTimeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                        testTimeoutCts.CancelAfter(TimeSpan.FromMinutes(20));
+                        try
+                        {
+                            await test.WaitForExitAsync(testTimeoutCts.Token);
+                        }
+                        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
                         {
                             _logger?.LogWarning("VapourSynth script test timed out after 20 minutes");
-                            try { test.Kill(); } catch { }
+                            try { test.Kill(entireProcessTree: true); } catch { }
                             throw new TimeoutException("VapourSynth script test timed out. TensorRT initialization may have failed.");
                         }
 
@@ -416,139 +420,13 @@ public class RifeInterpolationService
                     }
                 }
 
-                // Now run the actual processing with vspipe piped to FFmpeg
-                // -p enables progress reporting to stderr (Frame: X/Y format)
-                var vspipeProcess = new ProcessStartInfo
-                {
-                    FileName = vspipePath,
-                    Arguments = $"-p \"{tempScriptPath}\" - -c y4m",
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    UseShellExecute = false,
-                    CreateNoWindow = true
-                };
+                // Run the actual processing through the shared vspipe -> FFmpeg pipeline
+                // (handles progress, cancellation, orphan-kill and audio/subtitle muxing)
+                var ffmpegExe = VspipePipeline.ResolveFfmpegPath(ffmpegPath);
+                var encodeArgs = VspipePipeline.BuildEncodeArguments(inputVideoPath, outputVideoPath, preset: "fast");
 
-                // Determine FFmpeg path to use
-                var ffmpegExe = ffmpegPath ?? "ffmpeg";
-
-                // Try to find SVP's FFmpeg if not provided
-                if (string.IsNullOrEmpty(ffmpegPath) || ffmpegPath == "ffmpeg")
-                {
-                    var svpFFmpeg = @"C:\Program Files (x86)\SVP 4\utils\ffmpeg.exe";
-                    if (File.Exists(svpFFmpeg))
-                    {
-                        ffmpegExe = svpFFmpeg;
-                    }
-                }
-
-                var ffmpegProcess = new ProcessStartInfo
-                {
-                    FileName = ffmpegExe,
-                    Arguments = $"-i - -c:v libx264 -preset fast -crf 18 -y \"{outputVideoPath}\"",
-                    RedirectStandardInput = true,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    UseShellExecute = false,
-                    CreateNoWindow = true
-                };
-
-                _logger?.LogDebug("Running: {VspipeCmd} {VspipeArgs} | {FfmpegCmd} {FfmpegArgs}", vspipeProcess.FileName, vspipeProcess.Arguments, ffmpegProcess.FileName, ffmpegProcess.Arguments);
-
-                // Start both processes and pipe vspipe output to ffmpeg input
-                using var vspipe = SysProcess.Start(vspipeProcess);
-                using var ffmpeg = SysProcess.Start(ffmpegProcess);
-
-                if (vspipe == null || ffmpeg == null)
-                {
-                    throw new InvalidOperationException("Failed to start vspipe or ffmpeg process");
-                }
-
-                // Register cancellation handlers for graceful shutdown
-                var vspipeCancellation = cancellationToken.Register(async () =>
-                {
-                    _logger?.LogDebug("RIFE (SVP) cancelled - shutting down vspipe...");
-                    await ProcessManager.GracefulShutdownAsync(vspipe, gracefulTimeoutMs: 3000, processName: "vspipe (RIFE)");
-                });
-
-                var ffmpegCancellation = cancellationToken.Register(async () =>
-                {
-                    _logger?.LogDebug("RIFE (SVP) cancelled - shutting down ffmpeg...");
-                    await ProcessManager.GracefulShutdownAsync(ffmpeg, gracefulTimeoutMs: 2000, processName: "ffmpeg (RIFE)");
-                });
-
-                try
-                {
-                    // Pipe vspipe stdout to ffmpeg stdin
-                    var pipeTask = Task.Run(async () =>
-                    {
-                        try
-                        {
-                            await vspipe.StandardOutput.BaseStream.CopyToAsync(ffmpeg.StandardInput.BaseStream, cancellationToken);
-                            ffmpeg.StandardInput.Close();
-                        }
-                        catch (OperationCanceledException)
-                        {
-                            _logger?.LogDebug("[RIFE] Pipe operation cancelled");
-                        }
-                    }, cancellationToken);
-
-                    // Monitor progress from vspipe stderr
-                    var progressTask = Task.Run(async () =>
-                    {
-                        string? line;
-                        var framePattern = new Regex(@"Frame:\s*(\d+)/(\d+)");
-
-                        while ((line = await vspipe.StandardError.ReadLineAsync(cancellationToken)) != null)
-                        {
-                            _logger?.LogDebug("[vspipe] {Line}", line);
-
-                            var match = framePattern.Match(line);
-                            if (match.Success &&
-                                int.TryParse(match.Groups[1].Value, out var current) &&
-                                int.TryParse(match.Groups[2].Value, out var total) &&
-                                total > 0)
-                            {
-                                progress?.Report((double)current / total * 100);
-                            }
-                        }
-                    }, cancellationToken);
-
-                    // Monitor FFmpeg output
-                    var ffmpegMonitorTask = Task.Run(async () =>
-                    {
-                        string? line;
-                        while ((line = await ffmpeg.StandardError.ReadLineAsync(cancellationToken)) != null)
-                        {
-                            _logger?.LogDebug("[ffmpeg] {Line}", line);
-                        }
-                    }, cancellationToken);
-
-                    // Wait for both processes
-                    await Task.WhenAll(
-                        vspipe.WaitForExitAsync(cancellationToken),
-                        ffmpeg.WaitForExitAsync(cancellationToken),
-                        pipeTask,
-                        progressTask,
-                        ffmpegMonitorTask
-                    );
-                }
-                catch (OperationCanceledException)
-                {
-                    _logger?.LogDebug("RIFE (SVP) processing cancelled");
-                    throw;
-                }
-                finally
-                {
-                    vspipeCancellation.Dispose();
-                    ffmpegCancellation.Dispose();
-                }
-
-                var success = vspipe.ExitCode == 0 && ffmpeg.ExitCode == 0;
-
-                if (!success)
-                {
-                    _logger?.LogError("Processing failed - vspipe exit: {VspipeExitCode}, ffmpeg exit: {FfmpegExitCode}", vspipe.ExitCode, ffmpeg.ExitCode);
-                }
+                var (success, _, _) = await VspipePipeline.RunAsync(
+                    vspipePath, tempScriptPath, ffmpegExe, encodeArgs, progress, _logger, cancellationToken);
 
                 return success;
             }
@@ -1049,7 +927,7 @@ import os
 
 core = vs.core
 
-sys.path.insert(0, r'{_rifeFolderPath}')
+sys.path.insert(0, {VspipePipeline.PyQuote(_rifeFolderPath)})
 
 try:
     bs_plugin = r'C:\Program Files\VapourSynth\plugins\BestSource.dll'
@@ -1059,9 +937,9 @@ except:
     pass
 
 try:
-    core.std.LoadPlugin(r'{pluginPath}')
-    core.std.LoadPlugin(r'{Path.Combine(_rifeFolderPath, "vstrt.dll")}')
-    core.std.LoadPlugin(r'{Path.Combine(_rifeFolderPath, "akarin.dll")}')
+    core.std.LoadPlugin({VspipePipeline.PyQuote(pluginPath)})
+    core.std.LoadPlugin({VspipePipeline.PyQuote(Path.Combine(_rifeFolderPath, "vstrt.dll"))})
+    core.std.LoadPlugin({VspipePipeline.PyQuote(Path.Combine(_rifeFolderPath, "akarin.dll"))})
 except:
     pass
 
@@ -1069,21 +947,22 @@ try:
     import vsmlrt
     from vsmlrt import RIFE, Backend
     # Override models_path to use SVP's model location
-    vsmlrt.models_path = r'{svpModelPath}'
+    vsmlrt.models_path = {VspipePipeline.PyQuote(svpModelPath)}
 except ImportError as e:
     raise Exception(f'Failed to import vsmlrt module: {{e}}')
 
+_source = {VspipePipeline.PyQuote(inputVideoPath)}
 try:
-    clip = core.bs.VideoSource(source=r'{inputVideoPath}')
+    clip = core.bs.VideoSource(source=_source)
 except:
     try:
-        clip = core.ffms2.Source(r'{inputVideoPath}')
+        clip = core.ffms2.Source(_source)
     except:
         try:
-            clip = core.lsmas.LWLibavSource(r'{inputVideoPath}')
+            clip = core.lsmas.LWLibavSource(_source)
         except:
             try:
-                clip = core.avisource.AVISource(r'{inputVideoPath}')
+                clip = core.avisource.AVISource(_source)
             except Exception as e:
                 raise Exception('No VapourSynth source plugin found.')
 
@@ -1099,8 +978,8 @@ if target_height > 0 and target_height != height:
     clip = core.resize.Bicubic(clip, width=target_width, height=target_height)
     width = target_width
     height = target_height
-
-clip = core.resize.Bicubic(clip, format=vs.RGBS, matrix_in_s='709')
+{VspipePipeline.MatrixDetectSnippet}
+clip = core.resize.Bicubic(clip, format=vs.RGBS, matrix_in=_matrix)
 
 def pad_to_multiple(dimension, multiple=32):
     remainder = dimension % multiple
@@ -1134,7 +1013,7 @@ except Exception as e:
 if padded_width != width or padded_height != height:
     clip = core.resize.Bicubic(clip, width=width, height=height)
 
-clip = core.resize.Bicubic(clip, format=vs.YUV420P8, matrix_s='709')
+clip = core.resize.Bicubic(clip, format=vs.YUV420P8, matrix=_matrix)
 
 clip.set_output()
 ";

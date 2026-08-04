@@ -219,7 +219,12 @@ public class WorkerDependencyChecker(
             if (process == null) return null;
 
             var output = process.StandardOutput.ReadLine();
-            process.WaitForExit(5000);
+
+            // Don't leave a hung ffmpeg behind if it never exits
+            if (!process.WaitForExit(5000))
+            {
+                try { process.Kill(); } catch { }
+            }
 
             // Parse version from "ffmpeg version N.N.N ..."
             if (output != null)

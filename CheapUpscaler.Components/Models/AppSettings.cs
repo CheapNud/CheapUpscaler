@@ -1,3 +1,5 @@
+using System.Text.Json;
+
 namespace CheapUpscaler.Components.Models;
 
 /// <summary>
@@ -5,6 +7,17 @@ namespace CheapUpscaler.Components.Models;
 /// </summary>
 public class AppSettings
 {
+    /// <summary>
+    /// Shared serializer options for every settings file (desktop and worker), so files stay
+    /// portable between hosts. Case-insensitive reads keep the older PascalCase worker files valid.
+    /// </summary>
+    public static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        WriteIndented = true,
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        PropertyNameCaseInsensitive = true
+    };
+
     /// <summary>Tool path overrides (null = auto-detect)</summary>
     public ToolPaths ToolPaths { get; set; } = new();
 

@@ -145,22 +145,6 @@ public class ServerFileBrowserService(IConfiguration configuration) : IFileBrows
             });
         }
 
-        // On Linux, add /data if it exists (common Docker mount point)
-        if (OperatingSystem.IsLinux() && Directory.Exists("/data"))
-        {
-            // Only add if not already covered by input/output
-            var dataPath = Path.GetFullPath("/data");
-            if (!roots.Any(r => r.FullPath.StartsWith(dataPath) || dataPath.StartsWith(r.FullPath)))
-            {
-                roots.Add(new FileBrowserItem
-                {
-                    Name = "Data",
-                    FullPath = dataPath,
-                    IsDirectory = true
-                });
-            }
-        }
-
         return Task.FromResult<IReadOnlyList<FileBrowserItem>>(roots);
     }
 
@@ -178,27 +162,20 @@ public class ServerFileBrowserService(IConfiguration configuration) : IFileBrows
 
     private bool IsPathAllowed(string path)
     {
-        var normalizedPath = Path.GetFullPath(path);
-        var normalizedInput = Path.GetFullPath(_inputPath);
-        var normalizedOutput = Path.GetFullPath(_outputPath);
+        // Only the configured input/output trees - the whole /data tree is NOT allowed,
+        // the job database lives under /data/db
+        return IsContainedIn(_inputPath, path) || IsContainedIn(_outputPath, path);
+    }
 
-        // Allow paths within input or output directories
-        if (normalizedPath.StartsWith(normalizedInput, StringComparison.OrdinalIgnoreCase) ||
-            normalizedPath.StartsWith(normalizedOutput, StringComparison.OrdinalIgnoreCase))
-        {
-            return true;
-        }
+    /// <summary>
+    /// True when fullPath is the root itself or below it. Uses relative-path containment
+    /// rather than StartsWith, which would accept siblings like /data/input-backup.
+    /// </summary>
+    private static bool IsContainedIn(string root, string fullPath)
+    {
+        var relative = Path.GetRelativePath(Path.GetFullPath(root), Path.GetFullPath(fullPath));
 
-        // On Linux, also allow /data tree
-        if (OperatingSystem.IsLinux())
-        {
-            var dataPath = Path.GetFullPath("/data");
-            if (normalizedPath.StartsWith(dataPath, StringComparison.OrdinalIgnoreCase))
-            {
-                return true;
-            }
-        }
-
-        return false;
+        return !Path.IsPathRooted(relative)
+            && !relative.StartsWith("..", StringComparison.Ordinal);
     }
 }
