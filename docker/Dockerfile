@@ -4,7 +4,7 @@
 # ============================================
 # Stage 1: Build Stage
 # ============================================
-FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+FROM mcr.microsoft.com/dotnet/sdk:11.0-preview AS build
 
 WORKDIR /src
 
@@ -14,7 +14,7 @@ COPY CheapUpscaler.Core/*.csproj ./CheapUpscaler.Core/
 COPY CheapUpscaler.Components/*.csproj ./CheapUpscaler.Components/
 COPY CheapUpscaler.Worker/*.csproj ./CheapUpscaler.Worker/
 
-# Restore dependencies (targets net10.0 for Linux)
+# Restore dependencies (targets net11.0 for Linux)
 RUN dotnet restore CheapUpscaler.Worker/CheapUpscaler.Worker.csproj -r linux-x64
 
 # Copy source files
@@ -74,10 +74,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get autoremove -y \
     && rm -rf /var/lib/apt/lists/*
 
-# Install .NET 10 ASP.NET Core Runtime
+# Install .NET 11 ASP.NET Core Runtime (preview)
 RUN wget https://dot.net/v1/dotnet-install.sh -O dotnet-install.sh \
     && chmod +x dotnet-install.sh \
-    && ./dotnet-install.sh --channel 10.0 --runtime aspnetcore --install-dir /usr/share/dotnet \
+    && ./dotnet-install.sh --channel 11.0 --quality preview --runtime aspnetcore --install-dir /usr/share/dotnet \
     && ln -s /usr/share/dotnet/dotnet /usr/bin/dotnet \
     && rm dotnet-install.sh
 
