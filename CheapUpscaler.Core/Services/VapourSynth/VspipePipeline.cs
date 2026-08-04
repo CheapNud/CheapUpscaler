@@ -85,10 +85,20 @@ if _matrix in (0, 2, 3):
             ? "-map 1:s? -c:s copy "
             : "";
 
-        // ponytail: NVENC auto-selected when available (p5/cq19 ~ libx264 crf18 quality);
-        // per-job encoder settings + raw key=value passthrough are the upgrade path
+        // ponytail: NVENC auto-selected when available (cq19 ~ libx264 crf18 quality);
+        // per-job encoder settings + raw key=value passthrough are the upgrade path.
+        // Caller presets map onto NVENC's p1-p7 scale so speed intent survives the switch.
+        var nvencPreset = preset switch
+        {
+            "ultrafast" or "superfast" or "veryfast" => "p2",
+            "faster" or "fast" => "p4",
+            "medium" => "p5",
+            "slow" => "p6",
+            "slower" or "veryslow" => "p7",
+            _ => "p5"
+        };
         var videoArgs = IsNvencAvailable(ResolveFfmpegPath(ffmpegPath))
-            ? "-c:v h264_nvenc -preset p5 -cq 19"
+            ? $"-c:v h264_nvenc -preset {nvencPreset} -cq 19"
             : $"-c:v libx264 -preset {preset} -crf 18";
 
         return $"-i - -i \"{sourceVideoPath}\" -map 0:v:0 -map 1:a? -c:a copy {subtitleArgs}" +
