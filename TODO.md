@@ -44,7 +44,7 @@ _Nothing blocking._
 - [ ] (2026-08-04) Remote worker push — desktop client sends jobs to a Worker on another machine [user]
   - Upload → enqueue → poll → download result; local vs remote is a per-job choice
   - Same Worker binary regardless of host: Docker on Linux, native win-x64 service on Windows (no WSL2 — multi-GB file I/O)
-  - Lower priority: primary GPU is in the main workstation, so remote agents only pay off for long background jobs
+  - Roles are reversible: any machine can be client or worker; jobs run on whichever box is free (gaming on one → process on the other)
 - [ ] (2026-08-04) API key authentication middleware — needed once a Worker is exposed on the LAN [plan]
   - `X-Api-Key` header check, configured via env var (Worker) or settings (Desktop)
   - `/health` excluded from auth, Blazor same-origin bypasses
