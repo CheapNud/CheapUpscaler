@@ -53,7 +53,7 @@
 
 - [x] (2026-08-04 → 2026-08-05) Consolidate remaining service twins: VideoInfoService/WorkerVideoInfoService (identical except ffmpeg path lookup) and the two DependencyChecker GetFFmpegVersion copies [audit]
 - [x] (2026-08-04 → 2026-08-05) Expose "Auto" tile size in the ESRGAN settings UI (engine supports TileSize<=0 since the VRAM ladder; dropdown lacks the option) [audit]
-- [ ] (2026-08-04) Decide UhdMode on SVP path: currently documented no-op; wiring it to vsmlrt scale=0.5 is the real 4K optimization but changes behavior [audit]
+- [x] (2026-08-04 → 2026-08-05) Decide UhdMode on SVP path: wired to vsmlrt scale=0.5, matching Practical-RIFE --uhd semantics [audit]
 - [x] (2026-08-04 → 2026-08-04) Consolidate the duplicated queue engine into Shared [audit]
   - WorkerQueueService (516 lines) and UpscaleQueueService (422) are ~90% identical and have already drifted (cancellation, auto-pause, forced 60fps); one class + a single IJobProcessor interface, hosts keep only their processor impl
   - Same treatment for VideoInfoService/WorkerVideoInfoService twins and the dependency-checker GetFFmpegVersion drift (Worker copy lost its timeout kill, leaks hung processes)
