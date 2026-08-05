@@ -75,7 +75,8 @@ public class RifeOptions
 
     public int FrameHeight { get; set; } = 0;
     /// <summary>
-    /// Only used by the standalone Practical-RIFE path (--uhd). vsmlrt's RIFE has no uhd parameter.
+    /// Compute optical flow at half resolution - recommended for 4K sources.
+    /// Practical-RIFE path: --uhd flag. SVP/vsmlrt path: scale=0.5.
     /// </summary>
     public bool UhdMode { get; set; } = false;
     public bool UhMode { get => UhdMode; set => UhdMode = value; }

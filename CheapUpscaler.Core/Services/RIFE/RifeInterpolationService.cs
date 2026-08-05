@@ -762,7 +762,8 @@ try:
     # Keyword args only: vsmlrt.RIFE's positional order is
     # (clip, multi, scale, tiles, tilesize, overlap, model, backend, ensemble, video_player, _implementation)
     # - it has no uhd or scene-detect parameter (scene changes come from the _SceneChangeNext prop above).
-    clip = RIFE(clip, multi={multiplier}, scale=1.0, model={modelId}, backend=backend, ensemble={(options.TtaMode ? "True" : "False")})
+    # UHD mode = optical flow at half resolution (same semantics as Practical-RIFE's --uhd flag).
+    clip = RIFE(clip, multi={multiplier}, scale={(options.UhdMode ? "0.5" : "1.0")}, model={modelId}, backend=backend, ensemble={(options.TtaMode ? "True" : "False")})
 
 except Exception as e:
     import traceback
