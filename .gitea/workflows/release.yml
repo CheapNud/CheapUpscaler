@@ -1,0 +1,57 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  release:
+    name: Build and publish release
+    # Windows runner required: net11.0-windows desktop target; host SDK is used
+    # deliberately - actions/setup-dotnet triggers a firewall/UAC prompt that wedges the job
+    runs-on: windows
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Publish desktop app
+        shell: powershell
+        run: |
+          $version = "${{ github.ref_name }}".TrimStart('v')
+          # No PublishSingleFile: Blazor static web assets and the Photino native
+          # library do not survive single-file extraction reliably
+          dotnet publish CheapUpscaler.Blazor/CheapUpscaler.Blazor.csproj --configuration Release --runtime win-x64 --self-contained true --output publish/desktop /p:Version=$version
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+
+      - name: Package
+        shell: powershell
+        run: |
+          $version = "${{ github.ref_name }}".TrimStart('v')
+          $zip = "CheapUpscaler-v$version-win-x64.zip"
+          Compress-Archive -Path publish/desktop/* -DestinationPath $zip
+          $hash = (Get-FileHash $zip -Algorithm SHA256).Hash
+          "$hash  $zip" | Out-File -FilePath checksums.txt -Encoding ascii
+
+      - name: Create release with assets
+        shell: powershell
+        env:
+          FORGE_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $version = $tag.TrimStart('v')
+          $zip = "CheapUpscaler-v$version-win-x64.zip"
+          $apiBase = "${{ github.server_url }}/api/v1/repos/${{ github.repository }}"
+          $headers = @{ Authorization = "token $env:FORGE_TOKEN" }
+          $releaseBody = @{
+            tag_name = $tag
+            name = "CheapUpscaler $version"
+            body = "Self-contained win-x64 build, no .NET runtime required. Extract and run CheapUpscaler.Blazor.exe. AI processing needs an NVIDIA GPU plus VapourSynth/ffmpeg tooling on the machine. Verify downloads against checksums.txt (SHA256)."
+          } | ConvertTo-Json
+          $release = Invoke-RestMethod -Method Post -Uri "$apiBase/releases" -Headers $headers -ContentType "application/json" -Body $releaseBody
+          foreach ($asset in @($zip, "checksums.txt")) {
+            curl.exe -sf -X POST -H "Authorization: token $env:FORGE_TOKEN" -F "attachment=@$asset" "$apiBase/releases/$($release.id)/assets?name=$asset"
+            if ($LASTEXITCODE -ne 0) { exit 1 }
+          }
