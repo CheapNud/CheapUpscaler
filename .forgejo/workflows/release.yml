@@ -17,41 +17,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Publish desktop app
-        shell: powershell
-        run: |
-          $version = "${{ github.ref_name }}".TrimStart('v')
-          # No PublishSingleFile: Blazor static web assets and the Photino native
-          # library do not survive single-file extraction reliably
-          dotnet publish CheapUpscaler.Blazor/CheapUpscaler.Blazor.csproj --configuration Release --runtime win-x64 --self-contained true --output publish/desktop /p:Version=$version
-          if ($LASTEXITCODE -ne 0) { exit 1 }
-
-      - name: Package
-        shell: powershell
-        run: |
-          $version = "${{ github.ref_name }}".TrimStart('v')
-          $zip = "CheapUpscaler-v$version-win-x64.zip"
-          Compress-Archive -Path publish/desktop/* -DestinationPath $zip
-          $hash = (Get-FileHash $zip -Algorithm SHA256).Hash
-          "$hash  $zip" | Out-File -FilePath checksums.txt -Encoding ascii
-
-      - name: Create release with assets
-        shell: powershell
+      - name: Build, package, and publish to Forgejo
+        # cmd + explicit -File bypass instead of the runner's powershell step wrapper:
+        # the runner executes as SYSTEM, whose effective execution policy is
+        # Restricted and blocks the generated wrapper scripts. The release
+        # logic lives in deploy/release.ps1 and reads its inputs from env.
+        shell: cmd
         env:
-          FORGE_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          $tag = "${{ github.ref_name }}"
-          $version = $tag.TrimStart('v')
-          $zip = "CheapUpscaler-v$version-win-x64.zip"
-          $apiBase = "${{ github.server_url }}/api/v1/repos/${{ github.repository }}"
-          $headers = @{ Authorization = "token $env:FORGE_TOKEN" }
-          $releaseBody = @{
-            tag_name = $tag
-            name = "CheapUpscaler $version"
-            body = "Self-contained win-x64 build, no .NET runtime required. Extract and run CheapUpscaler.Blazor.exe. AI processing needs an NVIDIA GPU plus VapourSynth/ffmpeg tooling on the machine. Verify downloads against checksums.txt (SHA256)."
-          } | ConvertTo-Json
-          $release = Invoke-RestMethod -Method Post -Uri "$apiBase/releases" -Headers $headers -ContentType "application/json" -Body $releaseBody
-          foreach ($asset in @($zip, "checksums.txt")) {
-            curl.exe -sf -X POST -H "Authorization: token $env:FORGE_TOKEN" -F "attachment=@$asset" "$apiBase/releases/$($release.id)/assets?name=$asset"
-            if ($LASTEXITCODE -ne 0) { exit 1 }
-          }
+          REF_NAME: ${{ github.ref_name }}
+          FORGE_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SERVER_URL: ${{ github.server_url }}
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File deploy/release.ps1

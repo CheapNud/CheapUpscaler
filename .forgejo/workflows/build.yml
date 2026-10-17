@@ -15,6 +15,13 @@ jobs:
     runs-on: windows
     timeout-minutes: 30
 
+    # cmd instead of the default powershell wrapper: the runner executes as
+    # SYSTEM, whose effective execution policy is Restricted and blocks the
+    # generated step scripts; cmd has no policy to trip over
+    defaults:
+      run:
+        shell: cmd
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
